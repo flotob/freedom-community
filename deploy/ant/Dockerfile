@@ -30,7 +30,8 @@ EXPOSE 1633
 # GNOSIS_RPC_URL comes from the environment, because keyed RPC URLs are secrets.
 # Wallet history scans (eth_getLogs) stay on antd's public default (GNOSIS_LOGS_RPC_URL),
 # because keyed free tiers often cap log ranges.
-# The API listens on all interfaces inside the container; publish it to the host's loopback only.
+# The API listens on all interfaces inside the container. Don't publish it on the host:
+# the steward reaches it over the Docker network, and operators use an SSH tunnel to the container.
 ENTRYPOINT ["antd"]
 CMD ["--data-dir=/home/ant/.antd", \
      "--api-addr=0.0.0.0:1633", \
