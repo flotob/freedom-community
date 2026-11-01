@@ -1,0 +1,11 @@
+{
+  "name": "@freedom-community/spikes",
+  "version": "0.0.0",
+  "private": true,
+  "description": "Phase P0 spikes: small scripts that answer one question each, with numbers",
+  "license": "MIT",
+  "type": "module",
+  "dependencies": {
+    "@ethersphere/bee-js": "13.2.0"
+  }
+}

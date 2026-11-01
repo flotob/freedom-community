@@ -1,0 +1,198 @@
+{
+  "at": "2026-11-01T20:23:02.080Z",
+  "node": "antd/0.5.77",
+  "apiVersion": "7.2.0",
+  "beeJs": "13.2.0",
+  "results": [
+    {
+      "name": "bytes upload + download",
+      "endpoints": [
+        "POST /bytes",
+        "GET /bytes/{ref}"
+      ],
+      "ok": true,
+      "ms": 2170,
+      "reference": "4ed15972cc4fe60d3699d0480f25870f428544f94ccd5a168b31e732ed0ab2fa",
+      "uploadMs": 1994,
+      "size": 10240
+    },
+    {
+      "name": "chunk upload + download",
+      "endpoints": [
+        "POST /chunks",
+        "GET /chunks/{addr}"
+      ],
+      "ok": true,
+      "ms": 866,
+      "reference": "db77012f0a0f5fc1aa141b768115168385b860ca65ba7bac0ad28f8808226db2"
+    },
+    {
+      "name": "bzz collection (site) upload + path reads",
+      "endpoints": [
+        "POST /bzz (tar collection)",
+        "GET /bzz/{ref}/",
+        "GET /bzz/{ref}/{path}"
+      ],
+      "ok": true,
+      "ms": 1661,
+      "reference": "8ba115c67e4cae75088e845442c0fc89a5ada3d036fa00c16abbc61520f61d93",
+      "indexContentType": "text/html; charset=utf-8",
+      "jsContentType": "text/javascript; charset=utf-8"
+    },
+    {
+      "name": "SOC write + read",
+      "endpoints": [
+        "POST /soc/{owner}/{id}",
+        "GET /soc/{owner}/{id}"
+      ],
+      "ok": true,
+      "ms": 947,
+      "address": "03abd41596827ede37b3fee07162387a5c45ed21832474fbef26b89ff4964f1a",
+      "readAfterWriteMs": 187
+    },
+    {
+      "name": "sequence feed: 3 updates, latest read after each",
+      "endpoints": [
+        "POST /soc (feed updates)",
+        "GET /feeds/{owner}/{topic}"
+      ],
+      "ok": true,
+      "ms": 13393,
+      "owner": "5ca3d277c1dfa1a94664ee4d09408ba7c98733fd",
+      "topic": "4777580e476766d8dffe670533b500159284cc063caaf6606758e4f0556853cc",
+      "updates": [
+        {
+          "index": 0,
+          "writeMs": 7079,
+          "visibleAfterMs": 977
+        },
+        {
+          "index": 1,
+          "writeMs": 1691,
+          "visibleAfterMs": 976
+        },
+        {
+          "index": 2,
+          "writeMs": 1689,
+          "visibleAfterMs": 977
+        }
+      ]
+    },
+    {
+      "name": "feed manifest resolves through /bzz",
+      "endpoints": [
+        "POST /feeds/{owner}/{topic}",
+        "GET /bzz/{feed manifest}/"
+      ],
+      "ok": true,
+      "ms": 10852,
+      "manifest": "a6b04e9701f9619125a3c68fb3484eb0b6b9227b827103e9f0bcd384ac2cadfa",
+      "resolvedAfterMs": 976
+    },
+    {
+      "name": "stewardship: retrievable check + re-stamp on the community batch",
+      "endpoints": [
+        "GET /stewardship/{ref}",
+        "PUT /stewardship/{ref}"
+      ],
+      "ok": true,
+      "ms": 1075,
+      "reference": "4ed15972cc4fe60d3699d0480f25870f428544f94ccd5a168b31e732ed0ab2fa",
+      "retrievableBefore": true,
+      "reuploadMs": 727,
+      "retrievableAfter": true
+    },
+    {
+      "name": "envelope: pre-signed stamp, then upload with it",
+      "endpoints": [
+        "POST /envelope/{address}",
+        "POST /chunks (swarm-postage-stamp)"
+      ],
+      "ok": true,
+      "ms": 1020,
+      "issuer": "16deb74d9bc37ad7ed08715a7ef314bb08a7c314",
+      "index": "0000309b00000000",
+      "reference": "309bc8c1d26a490a3339fa0d7c6c3e4fa75a6e3926f6ac3e23fb25d5c6679e2d"
+    },
+    {
+      "name": "GSOC: subscribe, send, receive",
+      "endpoints": [
+        "GET /gsoc/subscribe/{address} (websocket)",
+        "POST /soc (gsoc)"
+      ],
+      "ok": false,
+      "ms": 93982,
+      "error": "no GSOC message within 90 s"
+    },
+    {
+      "name": "ACT grantee list create + read",
+      "endpoints": [
+        "POST /grantee",
+        "GET /grantee/{ref}"
+      ],
+      "ok": true,
+      "ms": 1918,
+      "ref": "f4658309448fe6bfdde2c415e5df2bc39fad95c3ca6099764b095d952bf771c54c61e26770256897c164d30a22197f446044cf8ea4b625353d99485eb744fdfe",
+      "grantees": 1
+    },
+    {
+      "name": "pins add / list / remove",
+      "endpoints": [
+        "POST /pins/{ref}",
+        "GET /pins",
+        "DELETE /pins/{ref}"
+      ],
+      "ok": true,
+      "ms": 529,
+      "listed": true
+    },
+    {
+      "name": "tags create / get",
+      "endpoints": [
+        "POST /tags",
+        "GET /tags/{uid}"
+      ],
+      "ok": true,
+      "ms": 350,
+      "uid": 6,
+      "split": 0
+    },
+    {
+      "name": "stamps read: list, one, buckets, chain state",
+      "endpoints": [
+        "GET /stamps",
+        "GET /stamps/{id}",
+        "GET /stamps/{id}/buckets",
+        "GET /chainstate"
+      ],
+      "ok": true,
+      "ms": 2456,
+      "communityUtilization": 1,
+      "communityTtlDays": 60,
+      "buckets": 65536,
+      "price": "197973"
+    },
+    {
+      "name": "stamps top-up (1 PLUR/chunk) on the throwaway batch",
+      "endpoints": [
+        "PATCH /stamps/topup/{id}/{amount}"
+      ],
+      "ok": true,
+      "ms": 11659,
+      "amountBefore": "927004958899",
+      "amountAfter": "927005156873"
+    },
+    {
+      "name": "stamps dilute (+1 depth) on the throwaway batch",
+      "endpoints": [
+        "PATCH /stamps/dilute/{id}/{depth}"
+      ],
+      "ok": true,
+      "ms": 5527,
+      "depthBefore": 17,
+      "depthAfter": 18,
+      "ttlDaysBefore": 2.99,
+      "ttlDaysAfter": 1.49
+    }
+  ]
+}

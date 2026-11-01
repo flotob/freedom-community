@@ -8,6 +8,8 @@
   },
   "workspaces": [
     "packages/*",
-    "apps/*"
+    "apps/*",
+    "spikes",
+    "tools/*"
   ]
 }
