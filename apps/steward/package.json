@@ -1,0 +1,8 @@
+{
+  "name": "@freedom-community/steward",
+  "version": "0.0.0",
+  "private": true,
+  "description": "Reference steward for freedom-community",
+  "license": "MIT",
+  "type": "module"
+}

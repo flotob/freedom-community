@@ -1,0 +1,13 @@
+{
+  "name": "freedom-community",
+  "private": true,
+  "description": "Communities on Swarm: protocol, reference steward and node deployment",
+  "license": "MIT",
+  "engines": {
+    "node": ">=22"
+  },
+  "workspaces": [
+    "packages/*",
+    "apps/*"
+  ]
+}

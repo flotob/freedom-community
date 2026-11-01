@@ -1,0 +1,8 @@
+{
+  "name": "@freedom-community/protocol",
+  "version": "0.0.0",
+  "private": true,
+  "description": "Schemas, builders, validators and the pure reducer for freedom-community",
+  "license": "MIT",
+  "type": "module"
+}
