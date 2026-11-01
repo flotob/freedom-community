@@ -1,12 +1,30 @@
 # Steward
 
-Placeholder. The steward runs one community. It works as a pipeline:
+Runs one community. It reads members' journals, applies the community's rules with
+`@freedom-community/protocol`'s reducer, appends the public ledger, publishes the views the
+app renders, and re-stamps everything it accepts on the community batch. The protocol is
+described in [`docs/protocol.md`](../../docs/protocol.md).
 
-1. **Ingest:** learn about new journal entries from a GSOC "doorbell" ping plus slow polling of members' journals.
-2. **Verify:** signature, schema, and the community's rules.
-3. **Reduce:** apply the action with `@freedom-community/protocol`'s reducer.
-4. **Ledger:** append the action and its outcome, accepted or rejected with a reason.
-5. **Views:** republish the pages the app reads.
-6. **Stamps:** re-stamp accepted content on the community's postage batch so it outlives members' own batches.
+```sh
+# create a community (steward key, app origin feed, first owner, genesis.json)
+BEE_URL=… BATCH=<community batch> STEWARD_KEY_FILE=steward.key OWNER_KEY_FILE=owner.key \
+  COMMUNITY=examples/waldkauz/community.json OUT=genesis.json node scripts/init.ts
 
-It talks to a Swarm node through the Bee-compatible HTTP API; see [`deploy/ant`](../../deploy/ant).
+# run it
+BEE_URL=… BATCH=<community batch> STEWARD_KEY_FILE=steward.key GENESIS=genesis.json \
+  DATA_DIR=./steward-data POLL_MS=30000 CANARY_MS=120000 node src/cli.ts run
+
+# anyone can audit a community from Swarm alone
+BEE_URL=… STEWARD=0x… COMMUNITY=<id> node src/cli.ts audit
+
+# made-up demo members (journals written exactly like Freedom's swarm_writeFeedEntry)
+BEE_URL=… BATCH=<member batch> GENESIS=genesis.json KEYS=members.json OWNER_KEY_FILE=owner.key node scripts/seed.ts
+```
+
+The pipeline, step by step:
+
+1. **Ingest.** The GSOC doorbell gives low latency. Every known member's journal is also polled slowly, and the steward rings its own doorbell as a canary; if the canary doesn't come back, it re-subscribes. A stranger's first entry must be a `member.join`; anything else is ignored.
+2. **Reduce.** Each entry, accepted or rejected, becomes a ledger entry with its outcome and the new state hash.
+3. **Ledger.** Pages of at most 4 KiB go out as a sequence feed.
+4. **Views.** Changed views are republished as JSON files behind feeds; feed indices are tracked locally.
+5. **Adopt.** Accepted content is re-stamped with `PUT /stewardship`. Every journal chunk the ledger references is re-uploaded with the community batch, so an audit still works after members' batches expire.

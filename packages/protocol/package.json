@@ -4,5 +4,16 @@
   "private": true,
   "description": "Schemas, builders, validators and the pure reducer for freedom-community",
   "license": "MIT",
-  "type": "module"
+  "type": "module",
+  "main": "src/index.ts",
+  "exports": {
+    ".": "./src/index.ts"
+  },
+  "scripts": {
+    "test": "node --test \"test/**/*.test.ts\""
+  },
+  "dependencies": {
+    "@noble/hashes": "^1.8.0",
+    "zod": "^4.1.0"
+  }
 }

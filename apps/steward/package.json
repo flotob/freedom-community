@@ -4,5 +4,17 @@
   "private": true,
   "description": "Reference steward for freedom-community",
   "license": "MIT",
-  "type": "module"
+  "type": "module",
+  "bin": {
+    "steward": "src/cli.ts"
+  },
+  "scripts": {
+    "test": "node --test \"test/**/*.test.ts\"",
+    "start": "node src/cli.ts run"
+  },
+  "dependencies": {
+    "@ethersphere/bee-js": "13.2.0",
+    "@freedom-community/protocol": "*",
+    "cafe-utility": "*"
+  }
 }

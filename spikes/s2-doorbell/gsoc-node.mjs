@@ -18,7 +18,7 @@ const sender = new Bee(process.env.SEND_URL || BEE_URL)
 const sleep = (n) => new Promise((r) => setTimeout(r, n))
 const t = () => new Date().toISOString().slice(11, 23)
 
-const overlay = (await (await fetch(`${BEE_URL}/addresses`)).json()).overlay
+const overlay = process.env.TARGET_OVERLAY || (await (await fetch(`${BEE_URL}/addresses`)).json()).overlay // TARGET_OVERLAY: mine near some other neighbourhood
 const id = Identifier.fromString(`freedom-community/s2-gsoc/${randomBytes(6).toString('hex')}`)
 const signer = bee.messaging.gsocMine(overlay, id, 8)
 const owner = signer.publicKey().address()

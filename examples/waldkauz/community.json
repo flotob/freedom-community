@@ -1,0 +1,22 @@
+{
+  "name": "Waldkauz Collective",
+  "appTopic": "freedom-community/v0/app/waldkauz",
+  "roles": [
+    { "id": "owner", "name": "Owner", "permissions": ["*"] },
+    { "id": "admin", "name": "Admin", "permissions": ["community.manage", "role.manage", "badge.manage", "mod.hide", "post.create", "comment.create", "like.set", "profile.set"] },
+    { "id": "moderator", "name": "Moderator", "permissions": ["mod.hide"] },
+    { "id": "member", "name": "Member", "permissions": ["post.create", "comment.create", "like.set", "profile.set"] }
+  ],
+  "defaultRoles": ["member"],
+  "badges": [
+    { "id": "founding", "name": "Founding member", "description": "Joined in the first month.", "roles": [] },
+    { "id": "warden", "name": "Warden", "description": "Keeps the forest tidy.", "roles": ["moderator"] }
+  ],
+  "categories": [
+    { "id": "events", "name": "Events", "color": "#2f7d59" },
+    { "id": "projects", "name": "Projects", "color": "#8a5a1f" },
+    { "id": "sightings", "name": "Sightings", "color": "#3b4cca" }
+  ],
+  "theme": { "primary": "#173d2d", "accent": "#c9a24f" },
+  "settings": { "public": true }
+}
