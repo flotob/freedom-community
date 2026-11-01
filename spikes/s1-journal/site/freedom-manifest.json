@@ -1,0 +1,10 @@
+{
+  "schema": "freedom-manifest/1",
+  "name": "Journal round-trip spike",
+  "description": "Writes test journal entries to a Swarm feed so a server process can read them back.",
+  "capabilities": {
+    "swarm": {
+      "feeds": { "why": "Write your journal: one feed of your actions in this community." }
+    }
+  }
+}

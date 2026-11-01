@@ -1,0 +1,39 @@
+{
+  "at": "2026-11-01T21:35:19.390Z",
+  "profile": "member-b",
+  "topic": "freedom-community/doorbell/s2-887c69ec",
+  "expectedAddress": "b794f02a45e027c61f2a014e47d14239243b4c09be1a77432e206dcd12c9b56c",
+  "site": "bzz://1de61aa3925533521b4f87035c37ce090dfa84543d95291899c6ac3a91c53565/",
+  "rings": [
+    {
+      "i": 0,
+      "sendMs": 2860,
+      "addressMatches": true,
+      "deliveredAfterSendMs": 578
+    },
+    {
+      "i": 1,
+      "sendMs": 856,
+      "addressMatches": true,
+      "deliveredAfterSendMs": 594
+    },
+    {
+      "i": 2,
+      "sendMs": 1204,
+      "addressMatches": true,
+      "deliveredAfterSendMs": 593
+    },
+    {
+      "i": 3,
+      "sendMs": 659,
+      "addressMatches": true,
+      "deliveredAfterSendMs": 594
+    },
+    {
+      "i": 4,
+      "sendMs": 486,
+      "addressMatches": true,
+      "deliveredAfterSendMs": 595
+    }
+  ]
+}

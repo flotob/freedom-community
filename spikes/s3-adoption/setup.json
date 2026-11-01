@@ -1,0 +1,31 @@
+{
+  "at": "2026-11-01T20:58:49.105Z",
+  "memberBatch": "4cfd28183ba34384c5fbbffe79b6110fd50aaf01c67f4f4079508247983e13d3",
+  "memberBatchExpiresApprox": "2026-11-03T08:13:08.105Z",
+  "communityBatch": "cd183ab18379ec4e8d297ce85bf50c0dcec8b46bc3517651ec6f1375756f9b28",
+  "blobs": [
+    {
+      "label": "adopted",
+      "ref": "90b306d3a9ccd1ddf31f789f3c382213a7b5a1c9277c7eae22f92f4737a67c71",
+      "sha256": "80bfc2aa7c0cdeee3e791e4fee632614497aefba2c2d037a44787e2d8339f4b7",
+      "bytes": 102400,
+      "restampMs": 5323
+    },
+    {
+      "label": "control",
+      "ref": "933344cadac4d5b76d2c9442c151769c78c895daae5be283367e9a5caa4703e3",
+      "sha256": "e1df26eacb5e08dea6eb7b704853f4bb3efeed9f828186a2aefd6044fdfba10d",
+      "bytes": 102400
+    }
+  ],
+  "extra": [
+    {
+      "label": "adopted (S7)",
+      "ref": "4ed15972cc4fe60d3699d0480f25870f428544f94ccd5a168b31e732ed0ab2fa"
+    },
+    {
+      "label": "control (smoke test)",
+      "ref": "ef133689e6aeea442883c135e76e6b6f0792af51c0bc6189de9bbe8736599d35"
+    }
+  ]
+}

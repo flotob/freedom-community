@@ -2,7 +2,8 @@
 // Subscribe, wait WARMUP_S seconds for antd's lurker to start pulling the target
 // neighbourhood, then send PINGS messages INTERVAL_S apart and measure delivery.
 //
-//   BEE_URL=http://localhost:1733 BATCH=<id> [WARMUP_S=90] [PINGS=5] [INTERVAL_S=15] node gsoc-node.mjs
+//   BEE_URL=http://localhost:1733 BATCH=<id> [SEND_URL=<other node>] [WARMUP_S=90] [PINGS=5] [INTERVAL_S=15] node gsoc-node.mjs
+// SEND_URL sends from a different node than the one that subscribes (BATCH must belong to it).
 import { Bee, Identifier, Bytes } from '@ethersphere/bee-js'
 import { randomBytes } from 'node:crypto'
 
@@ -13,6 +14,7 @@ const PINGS = +(process.env.PINGS || 5)
 const INTERVAL_S = +(process.env.INTERVAL_S || 15)
 if (!BATCH) throw new Error('set BATCH')
 const bee = new Bee(BEE_URL)
+const sender = new Bee(process.env.SEND_URL || BEE_URL)
 const sleep = (n) => new Promise((r) => setTimeout(r, n))
 const t = () => new Date().toISOString().slice(11, 23)
 
@@ -42,7 +44,7 @@ for (let i = 0; i < PINGS; i++) {
   const text = `ding ${i} ${randomBytes(4).toString('hex')}`
   const t0 = performance.now()
   try {
-    await bee.messaging.gsocSend(BATCH, signer, id, text)
+    await sender.messaging.gsocSend(BATCH, signer, id, text)
     sent.set(text, t0)
     console.log(t(), 'sent', JSON.stringify(text), `(${Math.round(performance.now() - t0)} ms upload)`)
   } catch (e) {

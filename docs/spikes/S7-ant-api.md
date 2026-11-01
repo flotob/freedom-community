@@ -1,6 +1,6 @@
 # Spike S7: does the released `antd` serve what the steward needs?
 
-**Answer: yes for everything except GSOC delivery, which goes on to spike S2.** 14 of 15 checks pass against `antd` 0.5.77, the release of 29 October 2026, used through bee-js 13.2.0 (the version Freedom 0.8.8 ships).
+**Answer: yes.** 14 of 15 checks passed in the first run. GSOC delivery failed there and was resolved in the S2 follow-up (stale subscription state, cleared by a restart; see [P0-results.md](P0-results.md#s2-doorbell)). The checks pass against `antd` 0.5.77, the release of 29 October 2026, used through bee-js 13.2.0 (the version Freedom 0.8.8 ships).
 
 - **Run:** 2026-11-01. The node is outbound-only, in a container on a Hetzner server, with about 110–170 peers and SWAP on.
 - **Script:** [`spikes/s7-ant-api/check.mjs`](../../spikes/s7-ant-api/check.mjs).
@@ -16,7 +16,7 @@
 | Feed manifest | `POST /feeds/{owner}/{topic}`, `GET /bzz/{manifest}/` | pass | resolves to the feed's target about 1 s after creation |
 | Stewardship | `GET /stewardship/{ref}`, `PUT /stewardship/{ref}` | pass | re-stamp on another batch took 0.7 s for 10 KiB; retrievable before and after |
 | Envelope (pre-signed stamp) | `POST /envelope/{addr}`, then `POST /chunks` with `swarm-postage-stamp` | pass | issuer is the batch owner; the chunk is retrievable |
-| **GSOC** | `GET /gsoc/subscribe/{addr}` (websocket), `POST /soc` | **fail** | 0 of 1, then 0 of 5 messages delivered (90 s warm-up) |
+| GSOC | `GET /gsoc/subscribe/{addr}` (websocket), `POST /soc` | fail, then **pass** | first run: 0 of 9 delivered; after a container restart, 9 of 9 at 1.2–1.3 s, and 5 of 5 from Freedom (S2) |
 | ACT grantees | `POST /grantee`, `GET /grantee/{ref}` | pass | |
 | Pins | `POST/GET/DELETE /pins` | pass | |
 | Tags | `POST /tags`, `GET /tags/{uid}` | pass | |
@@ -31,10 +31,8 @@
 - **Sponsored stamps are possible.** `/envelope` hands out a stamp signed by the steward's batch for a chunk address, and an upload carrying that stamp is accepted. Spike S6 checks whether Freedom can use such a stamp.
 - **Sites deploy from a directory upload** with the right content types, so the app can be served from `bzz://`.
 
-## GSOC: what failed and what's known
+## GSOC follow-up
 
-- antd's GSOC receive path (`ant_p2p::lurker`) pulls the target neighbourhood live from the 5 connected peers closest to the target.
-- In both runs the closest connected peers shared only 6–7 leading bits with the target (`lurker pulling neighborhood bin … bin=7` and `bin=6`). With about 2,000 nodes in the network, the storer neighbourhood is likely 9–10 bits deep, so those peers don't store the message and have nothing to hand over.
-- The lurker re-dials toward the neighbourhood every 30 s. In these runs (up to about 4 minutes) the covering peers didn't get closer.
-
-Next steps (spike S2): a longer warm-up, sending from a second node, and logging which peers the neighbourhood dial reaches. If GSOC can't be made reliable for a light node, the fallback is decision D1's: poll the journals, which the feed numbers above show is workable.
+- **First run:** delivery failed because antd's lurker stayed on peers at proximity 6–7 to the target for over an hour.
+- **After a restart:** the node reached peers at proximity 9–14 and delivered every message, including ones sent from Freedom.
+- **Details and the steward's canary mitigation:** [P0-results.md](P0-results.md#s2-doorbell).

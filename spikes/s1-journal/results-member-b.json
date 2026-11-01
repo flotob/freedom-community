@@ -1,0 +1,89 @@
+{
+  "at": "2026-11-01T21:20:12.609Z",
+  "profile": "member-b",
+  "freedom": "0.8.8",
+  "steps": {
+    "pageLoadMs": 2136
+  },
+  "site": "bzz://a90fe0fe4ef751336eff194923a978734dce465c6f4793713c4413a7e0fe37dc/",
+  "capabilities": {
+    "specVersion": "1.0",
+    "canPublish": false,
+    "reason": "not-connected",
+    "publisherIdentityModes": [
+      "app-scoped",
+      "bee-wallet",
+      "ethereum-wallet"
+    ],
+    "features": [
+      "messaging"
+    ],
+    "extensions": {
+      "ethereumWalletPublisherIdentity": true,
+      "publisherSigning": true
+    },
+    "limits": {
+      "maxDataBytes": 10485760,
+      "maxFilesBytes": 52428800,
+      "maxFileCount": 100,
+      "maxPathBytes": 100,
+      "maxChunkPayloadBytes": 4096,
+      "maxMessageBytes": 4000,
+      "maxTargetDepth": 3,
+      "maxSubscriptions": 32
+    }
+  },
+  "access": {
+    "connected": true,
+    "origin": "bzz://a90fe0fe4ef751336eff194923a978734dce465c6f4793713c4413a7e0fe37dc",
+    "capabilities": [
+      "publish"
+    ]
+  },
+  "feed": {
+    "feedId": "journal",
+    "owner": "0xE7640755f6e34F5730B98FC3CbBc8398c9A0c4b3",
+    "topic": "cdfb38548b219955265cf14e5cb089f62ed31b1615488e724e5ae5cf1316295b",
+    "manifestReference": "b479caec5d0d64eff7054638cb679b883962df326087f708c601e52654e6c7b6",
+    "bzzUrl": "bzz://b479caec5d0d64eff7054638cb679b883962df326087f708c601e52654e6c7b6",
+    "identityMode": "app-scoped"
+  },
+  "topicMatches": true,
+  "entries": [
+    {
+      "index": 0,
+      "writeMs": 2726,
+      "visibleOnStewardMs": 1002,
+      "latestOnStewardMs": 2155,
+      "socOwnerVerified": true
+    },
+    {
+      "index": 1,
+      "writeMs": 2652,
+      "visibleOnStewardMs": 1728,
+      "latestOnStewardMs": 2877,
+      "socOwnerVerified": true
+    },
+    {
+      "index": 2,
+      "writeMs": 2121,
+      "visibleOnStewardMs": 696,
+      "latestOnStewardMs": 1672,
+      "socOwnerVerified": true
+    },
+    {
+      "index": 3,
+      "writeMs": 2050,
+      "visibleOnStewardMs": 703,
+      "latestOnStewardMs": 1679,
+      "socOwnerVerified": true
+    },
+    {
+      "index": 4,
+      "writeMs": 1887,
+      "visibleOnStewardMs": 1706,
+      "latestOnStewardMs": 2684,
+      "socOwnerVerified": true
+    }
+  ]
+}

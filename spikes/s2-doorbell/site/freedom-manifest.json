@@ -1,0 +1,10 @@
+{
+  "schema": "freedom-manifest/1",
+  "name": "Doorbell spike",
+  "description": "Rings a community doorbell over GSOC so the steward notices new journal entries quickly.",
+  "capabilities": {
+    "swarm": {
+      "messaging": { "why": "Ring the community doorbell when you post, so the steward picks it up within seconds." }
+    }
+  }
+}

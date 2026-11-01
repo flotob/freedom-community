@@ -1,0 +1,30 @@
+{
+  "at": "2026-11-01T21:20:58.653Z",
+  "site": "bzz://4048a10758ed89d4d7044c54c5b29f145e2bd251c6502bcbe7795ecf53273806/",
+  "cases": [
+    {
+      "answerBytes": 2,
+      "sealedJsonBytes": 235,
+      "roundTrip": true,
+      "tamperRejected": true
+    },
+    {
+      "answerBytes": 29,
+      "sealedJsonBytes": 271,
+      "roundTrip": true,
+      "tamperRejected": true
+    },
+    {
+      "answerBytes": 2000,
+      "sealedJsonBytes": 2899,
+      "roundTrip": true,
+      "tamperRejected": true
+    }
+  ],
+  "env": {
+    "secureContext": true,
+    "subtle": true,
+    "origin": "bzz://4048a10758ed89d4d7044c54c5b29f145e2bd251c6502bcbe7795ecf53273806",
+    "protocol": "bzz:"
+  }
+}
