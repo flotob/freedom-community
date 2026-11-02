@@ -28,8 +28,8 @@ export interface StewardOptions {
 export interface LedgerEntry { id: string; soc: string; receivedAt: number; ok: boolean; reason?: string; stateHash: string; verdict?: Verdict }
 
 const PAGE_LIMIT = 3800 // bytes; a ledger page must fit one 4 KiB chunk
-/** 1: views as bzz files. 2: views as raw blobs, post bodies embedded. 3: member views carry journal receipts. 4: member cards carry a bio line. 5: the index view. 6: seal key, quests, leaderboards. 7: community view lists leaderboards. */
-const VIEW_FORMAT = 7
+/** 1: views as bzz files. 2: views as raw blobs, post bodies embedded. 3: member views carry journal receipts. 4: member cards carry a bio line. 5: the index view. 6: seal key, quests, leaderboards. 7: community view lists leaderboards. 8: genesis view. */
+const VIEW_FORMAT = 8
 const RECEIPTS_KEPT = 20
 /** Bodies larger than this stay out of views; the app reads them itself. */
 const MAX_BODY_BYTES = 256 * 1024
@@ -146,7 +146,7 @@ export class Steward {
   }
 
   private allViewsDirty(): void {
-    this.dirty.add('community').add('home').add('members').add('leaderboards')
+    this.dirty.add('community').add('home').add('members').add('leaderboards').add('genesis')
     if (this.state.quests) {
       this.dirty.add('quests').add('review')
       for (const id of Object.keys(this.state.quests)) this.dirty.add(`quest/${id}`)
@@ -352,6 +352,7 @@ export class Steward {
     const docs: { name: string; doc: unknown }[] = []
     for (const name of names) {
       if (name === 'community') docs.push({ name, doc: { ...communityView(s, stamp), sealKey: this.opts.sealKey?.publicB64 ?? null } })
+      else if (name === 'genesis') docs.push({ name, doc: this.opts.genesis }) // self-certifying: hashes to the community id
       else if (name === 'quests') docs.push({ name, doc: questsView(s, stamp) })
       else if (name === 'review') docs.push({ name, doc: reviewView(s, stamp) })
       else if (name === 'leaderboards') docs.push({ name, doc: leaderboardsView(s, stamp) })

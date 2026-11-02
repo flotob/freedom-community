@@ -142,6 +142,7 @@ The app reads pre-computed JSON documents. Each is a steward sequence feed (topi
 | View | Content |
 |---|---|
 | `community` | name, theme, categories, badges, roles (public part) |
+| `genesis` | the genesis document itself (self-certifying: its canonical hash is the community id), so a page can replay the ledger |
 | `home/<page>` | post cards, newest first, 20 per page |
 | `post/<action id>` | post plus comments and like count; the markdown `body` is embedded when the steward could read it and it matches `contentHash` |
 | `members` | member cards (one page for now) |
