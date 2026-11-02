@@ -142,6 +142,7 @@ The app reads pre-computed JSON documents. Each is a steward sequence feed (topi
 | View | Content |
 |---|---|
 | `community` | name, theme, categories, badges, roles (public part) |
+| `status` | the steward's and its node's health every 5 min: ledger page, canary round trip, pending re-stamps, peers, wallet balances, batches and their TTL (all public on chain anyway); for the dashboard page |
 | `genesis` | the genesis document itself (self-certifying: its canonical hash is the community id), so a page can replay the ledger |
 | `home/<page>` | post cards, newest first, 20 per page |
 | `post/<action id>` | post plus comments and like count; the markdown `body` is embedded when the steward could read it and it matches `contentHash` |

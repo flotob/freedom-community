@@ -23,6 +23,8 @@ export interface StewardOptions {
   log?: (...a: unknown[]) => void
   /** Opens sealed quest answers and solutions (derived from the steward key). */
   sealKey?: SealKey
+  /** How often to publish the `status` view (node and steward health); 0 disables it. */
+  statusMs?: number
 }
 
 export interface LedgerEntry { id: string; soc: string; receivedAt: number; ok: boolean; reason?: string; stateHash: string; verdict?: Verdict }
@@ -52,6 +54,7 @@ export class Steward {
   private canaryMisses = 0
   private lastCanary: { at: number; ms: number } | null = null
   private lastTickAt = 0
+  private readonly startedAt = Date.now()
   /** No usable local state at startup: rebuild it from the ledger before doing anything. */
   private fresh: boolean
   /** Journal chunks read this session, so re-stamping needs no second fetch. */
@@ -101,6 +104,10 @@ export class Steward {
     this.subscribe()
     const poll = this.opts.pollMs ?? 30_000
     this.timers.push(setInterval(() => this.tick('poll'), poll))
+    if (this.opts.statusMs) {
+      this.timers.push(setInterval(() => void this.publishStatus(), this.opts.statusMs))
+      setTimeout(() => void this.publishStatus(), 30_000)
+    }
     if (this.opts.canaryMs) this.timers.push(setInterval(() => { if (this.canary && Date.now() - this.canary.sentAt > 60_000) void this.ringCanary(); else if (!this.canary) void this.ringCanary() }, this.opts.canaryMs))
     await this.tick('start')
   }
@@ -170,6 +177,49 @@ export class Steward {
         this.log('body read failed (will retry with the next view build)', ref, String(e))
       }
     }))
+  }
+
+  /**
+   * The `status` view: the steward's own health and its node's, for the dashboard page.
+   * Nothing in it is secret: balances and batches are public on chain.
+   */
+  private async publishStatus(): Promise<void> {
+    const get = async <T>(path: string): Promise<T | null> => {
+      try {
+        const r = await fetch(`${this.swarm.url}${path}`, { signal: AbortSignal.timeout(20_000) })
+        return r.ok ? ((await r.json()) as T) : null
+      } catch {
+        return null
+      }
+    }
+    const [health, topology, wallet, chain, stamps] = await Promise.all([
+      get<{ version?: string }>('/health'),
+      get<{ connected?: number; population?: number; depth?: number }>('/topology'),
+      get<{ bzzBalance?: string; nativeTokenBalance?: string; walletAddress?: string; chequebookContractAddress?: string }>('/wallet'),
+      get<{ currentPrice?: string; block?: number }>('/chainstate'),
+      get<{ stamps?: { batchID: string; label?: string; depth: number; utilization: number; usable: boolean; batchTTL: number }[] }>('/stamps'),
+    ])
+    const doc = {
+      v: 0, kind: 'status', ...this.stamp(), at: Date.now(),
+      steward: { ...this.status(), startedAt: this.startedAt, uptimeS: Math.round((Date.now() - this.startedAt) / 1000) },
+      node: {
+        version: health?.version ?? null,
+        connected: topology?.connected ?? null, population: topology?.population ?? null, depth: topology?.depth ?? null,
+        wallet: wallet ? { bzz: wallet.bzzBalance ?? null, xdai: wallet.nativeTokenBalance ?? null, address: wallet.walletAddress ?? null, chequebook: wallet.chequebookContractAddress ?? null } : null,
+        price: chain?.currentPrice ?? null, block: chain?.block ?? null,
+        stamps: (stamps?.stamps ?? []).map((b) => ({ batchID: b.batchID, label: b.label ?? '', depth: b.depth, utilization: b.utilization, usable: b.usable, ttlDays: Math.round((b.batchTTL / 86400) * 10) / 10, community: b.batchID === this.swarm.batch })),
+      },
+    }
+    try {
+      const topic = viewTopic(this.community, 'status')
+      const index = this.data.viewIndex[topic] ?? (await this.swarm.nextFeedIndex(topic))
+      this.data.views.status = await this.swarm.publishJson(topic, doc, index)
+      this.data.viewIndex[topic] = index + 1
+      await this.publishIndex(this.stamp())
+      this.save()
+    } catch (e) {
+      this.log('status publish failed', String(e))
+    }
   }
 
   status() {
