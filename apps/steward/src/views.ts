@@ -36,6 +36,7 @@ export function communityView(s: State, stamp: ViewStamp) {
     v: 0, kind: 'community', ...stamp,
     id: c.id, name: c.name, origin: c.origin, steward: c.steward, theme: c.theme ?? null, public: c.public,
     categories: c.categories, badges: c.badges, roles: c.roles.map((r) => ({ id: r.id, name: r.name, permissions: r.permissions })),
+    leaderboards: c.leaderboards ?? [],
     counts: { members: Object.keys(s.members).length, posts: Object.values(s.posts).filter(visible).length },
     homePages: Math.max(1, Math.ceil(Object.values(s.posts).filter(visible).length / PAGE_SIZE)),
   }
