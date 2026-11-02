@@ -8,15 +8,20 @@
 #
 # Run it as a Coolify scheduled task on the Ant app, e.g. every 10 minutes:  ant-keeper
 set -u
-STATUS=${KEEPER_STATUS:-davinci-steward:8080}   # host:port of the steward's status endpoint
+STATUS=${KEEPER_STATUS:-davinci-steward:8080}   # host:port of each steward's status endpoint, comma-separated
 MIN_MISSES=${KEEPER_MIN_MISSES:-2}              # consecutive canary misses before acting
 MIN_UPTIME=${KEEPER_MIN_UPTIME_S:-900}          # never restart a node younger than this
 LOG=${KEEPER_LOG:-/home/ant/.antd/keeper.log}
 
-host=${STATUS%:*} port=${STATUS#*:}
 up=$(( $(cut -d. -f1 /proc/uptime) - $(awk '{print $22}' /proc/1/stat) / $(getconf CLK_TCK) ))
-body=$(timeout 10 bash -c "exec 3<>/dev/tcp/$host/$port && printf 'GET / HTTP/1.0\r\nHost: %s\r\n\r\n' '$host' >&3 && cat <&3" 2>/dev/null | tr -d '\r' | sed '1,/^$/d')
-misses=$(grep -o '"canaryMisses":[0-9]*' <<<"$body" | cut -d: -f2)
+# Every steward on this node rings its own doorbell; the worst one decides.
+misses=
+for target in ${STATUS//,/ }; do
+  host=${target%:*} port=${target#*:}
+  body=$(timeout 10 bash -c "exec 3<>/dev/tcp/$host/$port && printf 'GET / HTTP/1.0\r\nHost: %s\r\n\r\n' '$host' >&3 && cat <&3" 2>/dev/null | tr -d '\r' | sed '1,/^$/d')
+  m=$(grep -o '"canaryMisses":[0-9]*' <<<"$body" | cut -d: -f2)
+  [ -n "$m" ] && { [ -z "$misses" ] || [ "$m" -gt "$misses" ]; } && misses=$m
+done
 
 say() { echo "$(date -u +%FT%TZ) up=${up}s misses=${misses:-?} $*" | tee -a "$LOG"; }
 

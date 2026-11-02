@@ -1,0 +1,23 @@
+{
+  "name": "Kranich Commons",
+  "appTopic": "freedom-community/v0/app/kranich",
+  "roles": [
+    { "id": "owner", "name": "Owner", "permissions": ["*"] },
+    { "id": "admin", "name": "Admin", "permissions": ["community.manage", "role.manage", "badge.manage", "badge.score", "quest.manage", "quest.review", "library.manage", "library.post", "mod.hide", "post.create", "comment.create", "like.set", "profile.set", "quest.submit"] },
+    { "id": "moderator", "name": "Moderator", "permissions": ["mod.hide", "quest.review"] },
+    { "id": "member", "name": "Member", "permissions": ["post.create", "comment.create", "like.set", "profile.set", "quest.submit"] }
+  ],
+  "defaultRoles": ["member"],
+  "badges": [
+    { "id": "crane-spotter", "name": "Crane spotter", "description": "Counts cranes on the autumn flyway.", "roles": [], "default": true, "visibility": "everywhere",
+      "settings": { "decal_text": { "text": "{value} cranes", "color": "#FBF8F2", "background_color": "#2B3A55", "x": 0.22, "y": 0.92, "scale": 1 } } },
+    { "id": "warden", "name": "Warden", "description": "Keeps the commons tidy.", "roles": ["moderator"] }
+  ],
+  "categories": [
+    { "id": "counts", "name": "Counts", "color": "#2b3a55" },
+    { "id": "trips", "name": "Trips", "color": "#d4794a" },
+    { "id": "photos", "name": "Photos", "color": "#5b7f4a" }
+  ],
+  "theme": { "primary": "#2b3a55", "accent": "#d4794a" },
+  "settings": { "public": true }
+}

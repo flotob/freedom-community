@@ -2,15 +2,38 @@
 // Swarm collection, then point the app feed (owner = steward, the feed behind the origin's
 // feed manifest) at it. The origin URL never changes; members' app-scoped identities and
 // journal topics are derived from it.
-//   BEE_URL BATCH STEWARD_KEY_FILE APP_TOPIC ("freedom-community/v0/app/<name>") DIR [INDEX=index.html]
-import { readFileSync, readdirSync, statSync } from 'node:fs'
+// With GENESIS set, the site gets `community.json` (which community it shows) and a matching
+// `freedom-manifest.json`, so one app build serves any community.
+//   BEE_URL BATCH STEWARD_KEY_FILE APP_TOPIC ("freedom-community/v0/app/<name>") DIR [INDEX=index.html] [GENESIS]
+import { cpSync, mkdtempSync, readFileSync, readdirSync, rmSync, statSync, writeFileSync } from 'node:fs'
+import { tmpdir } from 'node:os'
 import { join } from 'node:path'
-import { keccakHex } from '@freedom-community/protocol'
+import { communityId, keccakHex } from '@freedom-community/protocol'
 import { Swarm } from '../src/swarm.ts'
 
 const env = process.env
 const need = (k: string) => env[k] ?? (() => { throw new Error(`${k} is required`) })()
-const dir = need('DIR')
+let dir = need('DIR')
+if (env.GENESIS) {
+  const genesis = JSON.parse(readFileSync(env.GENESIS, 'utf8'))
+  const tmp = mkdtempSync(join(tmpdir(), 'site-'))
+  cpSync(dir, tmp, { recursive: true })
+  writeFileSync(join(tmp, 'community.json'), JSON.stringify({ id: communityId(genesis), steward: genesis.steward.toLowerCase(), origin: genesis.origin, name: genesis.name }, null, 2))
+  const manifest = {
+    schema: 'freedom-manifest/1',
+    name: String(genesis.name).slice(0, 32),
+    description: 'A community on Swarm. What you post goes to your own journal; the community\'s steward applies its rules and publishes the result.',
+    capabilities: { swarm: {
+      publish: { why: 'Upload your posts and longer comments to Swarm, paid from your own storage.' },
+      feeds: { why: 'Write your posts, comments and likes to your journal, signed with a key only this community sees.' },
+      messaging: { why: 'Ring the community\'s doorbell, so the steward picks up what you did within seconds.' },
+    } },
+  }
+  writeFileSync(join(tmp, 'freedom-manifest.json'), JSON.stringify(manifest, null, 2))
+  process.on('exit', () => rmSync(tmp, { recursive: true, force: true }))
+  dir = tmp
+  console.log(`community ${communityId(genesis)} (${genesis.name})`)
+}
 const walk = (d: string): string[] => readdirSync(d).flatMap((n) => (statSync(join(d, n)).isDirectory() ? walk(join(d, n)) : [join(d, n)]))
 const files = walk(dir)
 const maps = files.filter((f) => f.endsWith('.map'))

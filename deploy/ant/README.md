@@ -47,7 +47,7 @@ The node's wallet is the address of `signing.key`; get it from `GET /addresses` 
 
 antd 0.5.77's GSOC subscriptions stop delivering some time after it starts. The steward
 notices because its own canary ring doesn't come back. The image ships `ant-keeper`, which
-reads the steward's status and, after repeated misses (and at least 15 min of uptime), sends
+reads the status of every steward on the node (`KEEPER_STATUS`, comma-separated) and, after repeated misses by any of them (and at least 15 min of uptime), sends
 antd SIGTERM. Docker's `unless-stopped` policy then restarts it in the same container, with the
 same address. Run it as a Coolify scheduled task on this app every 10 minutes (command
 `ant-keeper`). It logs to `~/.antd/keeper.log`. Settings: `KEEPER_STATUS` (default
