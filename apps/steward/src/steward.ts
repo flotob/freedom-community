@@ -8,6 +8,7 @@ import {
 import { Swarm, type JournalEntry } from './swarm.ts'
 import { Store, type StoreData } from './store.ts'
 import { communityView, dirtyFor, homeViews, memberView, membersView, postView, viewTopic, type ViewStamp } from './views.ts'
+import { audit } from './audit.ts'
 
 export interface StewardOptions {
   swarm: Swarm
@@ -38,6 +39,10 @@ export class Steward {
   private sub: { cancel(): void } | null = null
   private canary: { nonce: string; sentAt: number } | null = null
   private canaryMisses = 0
+  private lastCanary: { at: number; ms: number } | null = null
+  private lastTickAt = 0
+  /** No usable local state at startup: rebuild it from the ledger before doing anything. */
+  private fresh: boolean
   /** Journal chunks read this session, so re-stamping needs no second fetch. */
   private raw = new Map<string, JournalEntry>()
   readonly log: (...a: unknown[]) => void
@@ -55,7 +60,8 @@ export class Steward {
     this.store = new Store(opts.dataDir)
     const saved = this.store.load()
     if (saved && !saved.viewIndex) saved.viewIndex = {}
-    this.data = saved && saved.state.community.id === this.community
+    this.fresh = !(saved && saved.state.community.id === this.community)
+    this.data = saved && !this.fresh
       ? saved
       : { genesisRef: null, state: initialState(opts.genesis), cursors: {}, ledgerPage: 0, pendingAdopt: [], pendingRestamp: [], views: {}, viewIndex: {} }
     if (normalizeAddress(String(opts.genesis.steward)) !== normalizeAddress(this.swarm.owner)) {
@@ -66,6 +72,7 @@ export class Steward {
   get state(): State { return this.data.state }
 
   async start(): Promise<void> {
+    if (this.fresh) await this.recover()
     if (!this.data.genesisRef) {
       this.data.genesisRef = await this.swarm.uploadJson(this.opts.genesis, 'genesis.json')
       this.dirty.add('community')
@@ -77,6 +84,45 @@ export class Steward {
     this.timers.push(setInterval(() => this.tick('poll'), poll))
     if (this.opts.canaryMs) this.timers.push(setInterval(() => { if (this.canary && Date.now() - this.canary.sentAt > 60_000) void this.ringCanary(); else if (!this.canary) void this.ringCanary() }, this.opts.canaryMs))
     await this.tick('start')
+  }
+
+  /**
+   * The ledger on Swarm is the truth; the local file is a cache. Without it, replay our own
+   * ledger exactly as an auditor would, and refuse to run if the replay disagrees with it.
+   */
+  private async recover(): Promise<void> {
+    const first = await this.swarm.readFeedPayload(this.swarm.owner, this.ledgerTopic, 0)
+    if (!first) return // a new community
+    this.log('no local state: replaying our ledger from Swarm')
+    const r = await audit(this.swarm, this.swarm.owner, this.community, (...a) => this.log(...a))
+    if (r.mismatches.length || !r.state) throw new Error(`ledger replay disagrees with the ledger (${JSON.stringify(r.mismatches.slice(0, 3))}); not starting`)
+    this.data.genesisRef = (JSON.parse(new TextDecoder().decode(first)) as { genesis: string }).genesis
+    this.data.state = r.state
+    this.data.ledgerPage = r.pages
+    this.data.cursors = r.cursors
+    // Views may lag the ledger if the previous run died between the two: rebuild them all.
+    this.dirty.add('community').add('home').add('members')
+    for (const id of Object.keys(r.state.posts)) this.dirty.add(`post/${id}`)
+    for (const id of Object.keys(r.state.members)) this.dirty.add(`member/${id}`)
+    this.fresh = false
+    this.save()
+    this.log(`recovered: ${r.pages} ledger pages, ${r.entries} entries, state ${r.finalStateHash}`)
+  }
+
+  status() {
+    return {
+      community: this.community,
+      steward: this.swarm.owner,
+      ledgerPage: this.data.ledgerPage,
+      stateHash: stateHash(this.state),
+      members: Object.keys(this.state.members).length,
+      posts: Object.keys(this.state.posts).length,
+      lastTickAt: this.lastTickAt,
+      lastCanary: this.lastCanary,
+      canaryMisses: this.canaryMisses,
+      pendingAdopt: this.data.pendingAdopt.length,
+      pendingRestamp: this.data.pendingRestamp.length,
+    }
   }
 
   stop(): void {
@@ -98,6 +144,7 @@ export class Steward {
     try { msg = JSON.parse(text) } catch { return }
     if (msg.canary && this.canary?.nonce === msg.canary) {
       this.log(`canary back after ${Date.now() - this.canary.sentAt} ms`)
+      this.lastCanary = { at: Date.now(), ms: Date.now() - this.canary.sentAt }
       this.canary = null
       this.canaryMisses = 0
       return
@@ -129,6 +176,7 @@ export class Steward {
       for (const owner of owners.sort()) await this.ingest(owner)
       await this.flush()
       await this.retryPending()
+      this.lastTickAt = Date.now()
     } catch (e) {
       this.log('tick failed', String((e as Error)?.stack ?? e))
     } finally {

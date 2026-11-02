@@ -13,11 +13,13 @@ export interface AuditReport {
   mismatches: { id: string; problem: string }[]
   finalStateHash: string | null
   state: State | null
+  /** Next journal index per author, as the steward tracks it. */
+  cursors: Record<string, number>
 }
 
 export async function audit(swarm: Swarm, steward: string, community: string, log = (..._a: unknown[]) => {}): Promise<AuditReport> {
   const ledgerTopic = stewardTopic(community, 'ledger')
-  const report: AuditReport = { community, pages: 0, entries: 0, accepted: 0, rejected: 0, mismatches: [], finalStateHash: null, state: null }
+  const report: AuditReport = { community, pages: 0, entries: 0, accepted: 0, rejected: 0, mismatches: [], finalStateHash: null, state: null, cursors: {} }
   const first = await swarm.readFeedPayload(steward, ledgerTopic, 0)
   if (!first) throw new Error('no ledger page 0')
   const page0 = JSON.parse(new TextDecoder().decode(first)) as { genesis: string }
@@ -35,6 +37,7 @@ export async function audit(swarm: Swarm, steward: string, community: string, lo
       report.entries += 1
       const [owner, idx] = e.id.split(':')
       const index = Number(idx)
+      report.cursors[owner] = Math.max(report.cursors[owner] ?? 0, index + 1)
       const entry = await swarm.readJournal(owner, journal, index)
       if (!entry) { report.mismatches.push({ id: e.id, problem: 'journal entry missing' }); continue }
       if (entry.soc !== e.soc) report.mismatches.push({ id: e.id, problem: 'SOC address differs' })

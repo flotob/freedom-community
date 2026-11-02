@@ -1,0 +1,8 @@
+**/node_modules
+.git
+**/*.key
+**/.env
+**/.env.*
+spikes
+tools
+docs

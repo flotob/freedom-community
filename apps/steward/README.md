@@ -14,6 +14,10 @@ BEE_URL=… BATCH=<community batch> STEWARD_KEY_FILE=steward.key OWNER_KEY_FILE=
 BEE_URL=… BATCH=<community batch> STEWARD_KEY_FILE=steward.key GENESIS=genesis.json \
   DATA_DIR=./steward-data POLL_MS=30000 CANARY_MS=120000 node src/cli.ts run
 
+# or as a container (build context: repo root); STEWARD_KEY and GENESIS_JSON may replace the files
+docker build -f apps/steward/Dockerfile -t steward .
+docker run -e BEE_URL=… -e BATCH=… -e STEWARD_KEY=… -e GENESIS_JSON="$(cat genesis.json)" -v steward-data:/data steward
+
 # anyone can audit a community from Swarm alone
 BEE_URL=… STEWARD=0x… COMMUNITY=<id> node src/cli.ts audit
 
@@ -28,3 +32,9 @@ The pipeline, step by step:
 3. **Ledger.** Pages of at most 4 KiB go out as a sequence feed.
 4. **Views.** Changed views are republished as JSON files behind feeds; feed indices are tracked locally.
 5. **Adopt.** Accepted content is re-stamped with `PUT /stewardship`. Every journal chunk the ledger references is re-uploaded with the community batch, so an audit still works after members' batches expire.
+
+The local state file is only a cache. When `DATA_DIR` is empty, the steward replays its own
+ledger from Swarm exactly as an auditor would. It starts only if that replay agrees with every
+recorded outcome and state hash, then rebuilds all views. With `STATUS_PORT` set it answers any
+HTTP request with a JSON status: ledger page, state hash, the last canary round trip, and
+pending re-stamps.

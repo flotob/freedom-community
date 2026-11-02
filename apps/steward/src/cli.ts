@@ -2,9 +2,11 @@
 // steward run    — run the steward for one community
 // steward audit  — replay a community's ledger from Swarm and verify it
 //
-// run:   BEE_URL BATCH STEWARD_KEY_FILE GENESIS (path to genesis.json) [DATA_DIR] [POLL_MS] [CANARY_MS]
+// run:   BEE_URL BATCH (STEWARD_KEY | STEWARD_KEY_FILE) (GENESIS_JSON | GENESIS path)
+//        [DATA_DIR] [POLL_MS] [CANARY_MS] [STATUS_PORT]
 // audit: BEE_URL STEWARD (address) COMMUNITY (id)
 import { readFileSync } from 'node:fs'
+import { createServer } from 'node:http'
 import { randomBytes } from 'node:crypto'
 import { Swarm } from './swarm.ts'
 import { Steward } from './steward.ts'
@@ -15,15 +17,21 @@ const need = (k: string) => env[k] ?? (() => { throw new Error(`${k} is required
 const cmd = process.argv[2]
 
 if (cmd === 'run') {
-  const key = readFileSync(need('STEWARD_KEY_FILE'), 'utf8').trim()
+  const key = env.STEWARD_KEY ?? readFileSync(need('STEWARD_KEY_FILE'), 'utf8').trim()
   const swarm = new Swarm(need('BEE_URL'), need('BATCH'), key)
-  const genesis = JSON.parse(readFileSync(need('GENESIS'), 'utf8'))
+  const genesis = JSON.parse(env.GENESIS_JSON ?? readFileSync(need('GENESIS'), 'utf8'))
   const steward = new Steward({
     swarm, genesis, dataDir: env.DATA_DIR ?? './steward-data',
     pollMs: Number(env.POLL_MS ?? 30_000), canaryMs: Number(env.CANARY_MS ?? 300_000),
   })
   process.on('SIGTERM', () => { steward.stop(); process.exit(0) })
   process.on('SIGINT', () => { steward.stop(); process.exit(0) })
+  if (env.STATUS_PORT) {
+    createServer((_req, res) => {
+      res.setHeader('content-type', 'application/json')
+      res.end(JSON.stringify(steward.status()))
+    }).listen(Number(env.STATUS_PORT))
+  }
   await steward.start()
   steward.log(`running: community ${steward.community}, steward ${swarm.owner}, ledger ${steward.ledgerTopic}`)
 } else if (cmd === 'audit') {
