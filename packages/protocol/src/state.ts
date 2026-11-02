@@ -185,6 +185,26 @@ export function can(state: State, owner: string, permission: string, at?: number
   return state.community.roles.some((r) => roles.includes(r.id) && (r.permissions.includes('*') || r.permissions.includes(permission)))
 }
 
+/**
+ * Role positions, as davinci orders roles: a role's place in the community's role list,
+ * 0 being the most powerful (the owner role comes first).
+ */
+export function rolePosition(state: State, roleId: string): number {
+  const i = state.community.roles.findIndex((r) => r.id === roleId)
+  return i < 0 ? Number.POSITIVE_INFINITY : i
+}
+
+/** The best (lowest) position among a member's roles, direct or carried by a live badge; null with none. */
+export function bestPosition(state: State, owner: string, at?: number): number | null {
+  const roles = effectiveRoles(state, owner, at)
+  return roles.length ? Math.min(...roles.map((r) => rolePosition(state, r))) : null
+}
+
+/** Reach for granting a role (or a badge carrying it): strictly weaker positions, plus position 0 on position 0. */
+export const mayGrantPosition = (min: number | null, target: number) => min !== null && (target > min || (min === 0 && target === 0))
+/** Reach for revoking a role: strictly weaker positions only, so not even an owner demotes an owner. */
+export const mayRevokePosition = (min: number | null, target: number) => min !== null && target > min
+
 export function isOwnerRole(state: State, roleId: string): boolean {
   return state.community.roles.find((r) => r.id === roleId)?.permissions.includes('*') ?? false
 }

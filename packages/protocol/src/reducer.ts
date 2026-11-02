@@ -2,7 +2,7 @@
 // The steward, the app (optimistic updates) and auditors all run this same function.
 import { actionId, normalizeAddress } from './canonical.ts'
 import { parseAction, type Action } from './schemas.ts'
-import { addSorted, can, isOwnerRole, removeValue, type Comment, type Library, type Post, type Quest, type State, type Submission } from './state.ts'
+import { addSorted, bestPosition, can, isOwnerRole, mayGrantPosition, mayRevokePosition, removeValue, rolePosition, type Comment, type Library, type Post, type Quest, type State, type Submission } from './state.ts'
 
 export interface ReduceContext {
   /** The journal owner who signed the entry. */
@@ -156,8 +156,10 @@ function apply(s: State, a: Action, ctx: Ctx, effects: Effect[]): string | null 
       const member = s.members[a.body.member]
       if (!member) return 'unknown-member'
       if (!s.community.roles.some((r) => r.id === a.body.role)) return 'unknown-role'
-      // Only an all-powerful member hands out or takes away all-powerful roles.
-      if (isOwnerRole(s, a.body.role) && !can(s, ctx.author, '*', ctx.at)) return 'not-permitted'
+      // Position reach: grant strictly weaker roles (an owner also grants owner); revoke strictly weaker only.
+      const min = bestPosition(s, ctx.author, ctx.at)
+      const pos = rolePosition(s, a.body.role)
+      if (!(a.type === 'role.grant' ? mayGrantPosition(min, pos) : mayRevokePosition(min, pos))) return 'out-of-reach'
       if (a.type === 'role.grant') {
         member.roles = addSorted(member.roles, a.body.role)
         return null
@@ -174,8 +176,9 @@ function apply(s: State, a: Action, ctx: Ctx, effects: Effect[]): string | null 
       if (!member) return 'unknown-member'
       const badge = s.community.badges.find((b) => b.id === a.body.badge)
       if (!badge) return 'unknown-badge'
-      // A badge carrying an all-powerful role is an owner grant in disguise.
-      if (badge.roles.some((r) => isOwnerRole(s, r)) && !can(s, ctx.author, '*', ctx.at)) return 'not-permitted'
+      // A badge that carries roles needs reach over each of them (an owner badge is an owner grant in disguise).
+      const min = bestPosition(s, ctx.author, ctx.at)
+      if (badge.roles.some((r) => !mayGrantPosition(min, rolePosition(s, r)))) return 'out-of-reach'
       if (a.type === 'badge.grant') {
         if (badge.enabled === false) return 'badge-disabled'
         member.badges = addSorted(member.badges, badge.id)

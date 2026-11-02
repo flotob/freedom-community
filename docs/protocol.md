@@ -68,7 +68,7 @@ A journal entry is one action:
 | `comment.create` | `comment.create` | `{ post, parent?, text }` (≤ 2 KiB inline) or `{ post, parent?, content, contentHash }`; `parent` replies to a comment on the same post, down to depth 4 |
 | `like.set` | `like.set` | `{ target (action id), on: true\|false }` |
 | `mod.hide` | `mod.hide` | `{ target, reason }` |
-| `role.grant` / `role.revoke` | `role.manage` | `{ member, role }` |
+| `role.grant` / `role.revoke` | `role.manage` | `{ member, role }`, within the author's **position reach** (below) |
 | `badge.grant` / `badge.revoke` | `badge.manage` | `{ member, badge }` |
 | `community.update` | `community.manage` | `{ name?, theme?, categories?, badges?, roles?, leaderboards?, plans?, treasury? }` |
 | `library.create` / `library.update` | `library.manage` | `{ name, description?, cover?, postToFeed? }` / `{ library, …, archived? }`; posting into one needs `library.post` (`post.create` with `library`) |
@@ -79,6 +79,15 @@ A journal entry is one action:
 | `quest.update` | `quest.manage` | `{ quest, …any quest field, close? }` (kind is fixed once there are submissions) |
 | `quest.submit` | `quest.submit` | `{ quest, answer: {sealed} \| {text} \| {image}, private? }` |
 | `quest.review` | `quest.review` | `{ submission, decision: approved\|rejected\|disqualified }` |
+
+### Community roles and position reach
+
+The community's roles are listed in order of power, and a role's place in that list is its **position** (0 is the most powerful, normally the owner role). The rules follow davinci's role management:
+- An author's best position is the lowest among the roles they hold, directly or through a live badge.
+- **Granting** a role reaches strictly weaker positions; position 0 may also grant position 0.
+- **Revoking** a role reaches strictly weaker positions only, so no one revokes an owner (once owner, always owner).
+- Granting or revoking a badge needs the grant reach over every role the badge carries.
+- A refusal is `out-of-reach`.
 
 ### Badges, scores, leaderboards
 

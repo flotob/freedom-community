@@ -100,19 +100,43 @@ test('a badge carrying a role grants its permissions; revoking it takes them awa
   assert.equal(can(j.state, MOD, 'mod.hide'), false)
 })
 
-test('owner powers: only owners grant owner roles or owner-carrying badges; the last owner stays', () => {
+test('position reach: owners grant owner roles and owner badges; no one revokes an owner (davinci: once owner, always owner)', () => {
   const j = new Journal()
   j.act(ALICE, 'member.join')
-  j.act(OWNER, 'role.grant', { member: ALICE, role: 'moderator' })
-  assert.equal((j.act(OWNER, 'role.revoke', { member: OWNER, role: 'owner' }) as { reason: string }).reason, 'last-owner')
+  j.act(BOB, 'member.join')
+  assert.equal(j.act(OWNER, 'role.grant', { member: ALICE, role: 'moderator' }).ok, true)
+  // revoking reaches strictly weaker positions only: not even an owner revokes the owner role
+  assert.equal((j.act(OWNER, 'role.revoke', { member: OWNER, role: 'owner' }) as { reason: string }).reason, 'out-of-reach')
   assert.equal(j.act(OWNER, 'badge.grant', { member: ALICE, badge: 'crown' }).ok, true)
   assert.equal(can(j.state, ALICE, 'community.manage'), true)
-  // Alice is all-powerful through the badge, but the last-owner rule counts holders of
-  // the role itself, so the original owner still can't step down...
-  assert.equal((j.act(OWNER, 'role.revoke', { member: OWNER, role: 'owner' }) as { reason: string }).reason, 'last-owner')
-  // ...until someone else holds the owner role directly.
-  j.act(OWNER, 'role.grant', { member: ALICE, role: 'owner' })
-  assert.equal(j.act(OWNER, 'role.revoke', { member: OWNER, role: 'owner' }).ok, true)
+  // Alice now holds position 0 through the badge: she may grant the owner role too
+  assert.equal(j.act(ALICE, 'role.grant', { member: BOB, role: 'owner' }).ok, true)
+  assert.equal((j.act(ALICE, 'role.revoke', { member: BOB, role: 'owner' }) as { reason: string }).reason, 'out-of-reach')
+})
+
+test('position reach: a moderator-level role manager grants only weaker roles and badges', () => {
+  const j = new Journal()
+  for (const m of [ALICE, BOB]) j.act(m, 'member.join')
+  const roles = [
+    { id: 'owner', name: 'Owner', permissions: ['*'] },
+    { id: 'admin', name: 'Admin', permissions: ['role.manage', 'badge.manage'] },
+    { id: 'moderator', name: 'Moderator', permissions: ['mod.hide'] },
+    { id: 'member', name: 'Member', permissions: ['post.create'] },
+  ]
+  const badges = [{ id: 'warden', name: 'Warden', roles: ['moderator'] }, { id: 'steward', name: 'Steward', roles: ['admin'] }]
+  assert.equal(j.act(OWNER, 'community.update', { roles, badges }).ok, true)
+  assert.equal(j.act(OWNER, 'role.grant', { member: ALICE, role: 'admin' }).ok, true)
+  // an admin (position 1) grants moderator (2) but not admin (1) or owner (0)
+  assert.equal(j.act(ALICE, 'role.grant', { member: BOB, role: 'moderator' }).ok, true)
+  assert.equal((j.act(ALICE, 'role.grant', { member: BOB, role: 'admin' }) as { reason: string }).reason, 'out-of-reach')
+  assert.equal((j.act(ALICE, 'role.grant', { member: BOB, role: 'owner' }) as { reason: string }).reason, 'out-of-reach')
+  // badges carrying roles follow their roles' positions
+  assert.equal(j.act(ALICE, 'badge.grant', { member: BOB, badge: 'warden' }).ok, true)
+  assert.equal((j.act(ALICE, 'badge.grant', { member: BOB, badge: 'steward' }) as { reason: string }).reason, 'out-of-reach')
+  // and she can't demote her own peer level either
+  assert.equal(j.act(OWNER, 'role.grant', { member: BOB, role: 'admin' }).ok, true)
+  assert.equal((j.act(ALICE, 'role.revoke', { member: BOB, role: 'admin' }) as { reason: string }).reason, 'out-of-reach')
+  assert.equal(j.act(ALICE, 'role.revoke', { member: BOB, role: 'moderator' }).ok, true)
 })
 
 test('authors edit and withdraw their own posts only', () => {
