@@ -120,9 +120,10 @@ export const ACTION_BODIES = {
     categories: z.array(slug).max(5).optional(),
   }),
   'post.withdraw': z.object({ post: actionIdSchema }),
+  // `parent`: a reply to another comment on the same post (davinci nests up to depth 4)
   'comment.create': z.union([
-    z.object({ post: actionIdSchema, text: shortText(2048) }),
-    z.object({ post: actionIdSchema, content: ref, contentHash: hash }),
+    z.object({ post: actionIdSchema, parent: actionIdSchema.optional(), text: shortText(2048) }),
+    z.object({ post: actionIdSchema, parent: actionIdSchema.optional(), content: ref, contentHash: hash }),
   ]),
   'like.set': z.object({ target: actionIdSchema, on: z.boolean() }),
   'mod.hide': z.object({ target: actionIdSchema, reason: z.string().min(1).max(500) }),

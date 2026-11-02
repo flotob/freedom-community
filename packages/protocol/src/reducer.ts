@@ -42,6 +42,9 @@ export function reduce(state: State, entry: unknown, ctx: ReduceContext): { stat
 
 type Ctx = { author: string; id: string; at: number; verdict?: Verdict }
 
+/** The deepest a reply may sit (a top-level comment is depth 0), as in davinci. */
+export const COMMENT_MAX_DEPTH = 4
+
 // Returns a rejection reason, or null after mutating `s` in place (s is already a copy).
 function apply(s: State, a: Action, ctx: Ctx, effects: Effect[]): string | null {
   const me = s.members[ctx.author]
@@ -104,6 +107,14 @@ function apply(s: State, a: Action, ctx: Ctx, effects: Effect[]): string | null 
       const post = s.posts[a.body.post]
       if (!post || post.status !== 'published') return 'unknown-target'
       const comment: Comment = { id: ctx.id, post: post.id, author: ctx.author, createdAt: ctx.at, status: 'published', likes: [] }
+      if (a.body.parent !== undefined) {
+        const parent = s.comments[a.body.parent]
+        if (!parent || parent.post !== post.id || parent.status !== 'published') return 'unknown-target'
+        let depth = 1
+        for (let c = parent; c.parent; c = s.comments[c.parent]) depth++
+        if (depth > COMMENT_MAX_DEPTH) return 'too-deep'
+        comment.parent = parent.id
+      }
       if ('text' in a.body) comment.text = a.body.text
       else {
         comment.content = a.body.content

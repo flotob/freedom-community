@@ -153,3 +153,18 @@ test('a replay with the recorded verdicts reaches the same state hash', () => {
   for (const e of j.log) s2 = reduce(s2, e.entry, { author: e.author, index: e.index, receivedAt: e.receivedAt }).state
   assert.notEqual(stateHash(s2), stateHash(j.state))
 })
+
+test('replies nest under a comment on the same post, down to depth 4', () => {
+  const j = new Journal()
+  for (const m of [ALICE, BOB]) j.act(m, 'member.join')
+  const roles = [...genesis.roles.map((r) => (r.id === 'member' ? { ...r, permissions: [...r.permissions, 'post.create', 'comment.create'] } : r))]
+  assert.equal(j.act(OWNER, 'community.update', { roles }).ok, true)
+  const post = j.act(ALICE, 'post.create', { excerpt: 'x', content: REF, contentHash: 'e'.repeat(64), categories: [] }).id
+  const other = j.act(ALICE, 'post.create', { excerpt: 'y', content: REF, contentHash: 'e'.repeat(64), categories: [] }).id
+  let parent = j.act(BOB, 'comment.create', { post, text: 'top' }).id
+  assert.equal(j.state.comments[parent].parent, undefined)
+  assert.equal(j.act(BOB, 'comment.create', { post: other, parent, text: 'wrong post' }).reason, 'unknown-target')
+  for (let d = 1; d <= 4; d++) parent = j.act(ALICE, 'comment.create', { post, parent, text: `depth ${d}` }).id
+  assert.equal(j.state.comments[parent].parent !== undefined, true)
+  assert.equal(j.act(BOB, 'comment.create', { post, parent, text: 'depth 5' }).reason, 'too-deep')
+})

@@ -74,6 +74,8 @@ export interface Post {
 export interface Comment {
   id: string
   post: string
+  /** The comment this replies to; absent for a top-level comment. */
+  parent?: string
   author: string
   createdAt: number
   text?: string

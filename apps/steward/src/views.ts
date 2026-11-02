@@ -58,7 +58,7 @@ export function postView(s: State, id: string, stamp: ViewStamp, bodies: Bodies 
   const p = s.posts[id]
   if (!p) return null
   const comments = p.comments.map((cid) => s.comments[cid]).filter(Boolean).map((c) => ({
-    id: c.id, author: c.author, authorName: s.members[c.author]?.profile.name ?? null, createdAt: c.createdAt,
+    id: c.id, parent: c.parent ?? null, author: c.author, authorName: s.members[c.author]?.profile.name ?? null, authorAvatar: s.members[c.author]?.profile.avatar ?? null, createdAt: c.createdAt,
     status: c.status, hiddenReason: c.hiddenReason ?? null, text: c.status === 'published' ? c.text ?? null : null,
     content: c.status === 'published' ? c.content ?? null : null,
     body: c.status === 'published' ? bodies(c.content) : null, likeCount: c.likes.length,

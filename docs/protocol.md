@@ -65,7 +65,7 @@ A journal entry is one action:
 | `post.create` | `post.create` | `{ title?, excerpt, content (ref), contentHash, categories?, image? (ref) }` |
 | `post.edit` | author + `post.create` | `{ post (action id), title?, excerpt?, content?, contentHash?, categories? }` |
 | `post.withdraw` | author | `{ post }` |
-| `comment.create` | `comment.create` | `{ post, text }` (≤ 2 KiB inline) or `{ post, content, contentHash }` |
+| `comment.create` | `comment.create` | `{ post, parent?, text }` (≤ 2 KiB inline) or `{ post, parent?, content, contentHash }`; `parent` replies to a comment on the same post, down to depth 4 |
 | `like.set` | `like.set` | `{ target (action id), on: true\|false }` |
 | `mod.hide` | `mod.hide` | `{ target, reason }` |
 | `role.grant` / `role.revoke` | `role.manage` | `{ member, role }` |
