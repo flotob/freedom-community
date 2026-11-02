@@ -100,14 +100,14 @@ A sequence feed of pages:
 
 ## Views
 
-The app reads pre-computed JSON documents. Each is a steward feed whose latest entry is a reference to the document:
+The app reads pre-computed JSON documents. Each is a steward sequence feed (topic name `view/<view>`) whose latest entry is a reference to the document. The entry is bee-js's 40-byte form, an 8-byte timestamp followed by the 32-byte reference. The document is a raw blob (`/bytes`), not a `bzz` file, so a page reads it with Freedom's `swarm_readFeedEntry` and then `swarm_readData`: two verified calls per view.
 
 | View | Content |
 |---|---|
 | `community` | name, theme, categories, badges, roles (public part) |
 | `home/<page>` | post cards, newest first, 20 per page |
-| `post/<action id>` | post plus comments and like count |
-| `members/<page>` | member cards |
+| `post/<action id>` | post plus comments and like count; the markdown `body` is embedded when the steward could read it and it matches `contentHash` |
+| `members` | member cards (one page for now) |
 | `member/<owner>` | profile, roles, badges, posts |
 | `leaderboard/<id>` | ranking |
 

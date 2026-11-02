@@ -84,12 +84,25 @@ export class Swarm {
     return r.reference.toHex()
   }
 
-  /** Publish a JSON document as a file and point the feed at it (views). */
-  async publishJson(topicHex: string, doc: unknown, index?: number, name = 'view.json'): Promise<string> {
-    const file = await this.bee.file.upload(this.batch, JSON.stringify(doc), name, { contentType: 'application/json' })
+  /**
+   * Publish a JSON document as a raw blob (`/bytes`) and point the feed at it (views).
+   * A raw blob, not a `bzz` file: pages read it with Freedom's `swarm_readData`, which
+   * returns a blob's bytes but a manifest's own bytes, not the file inside it.
+   */
+  async publishJson(topicHex: string, doc: unknown, index?: number): Promise<string> {
+    const blob = await this.bee.data.upload(this.batch, JSON.stringify(doc))
     // An explicit index skips the feed lookup, which costs seconds per update.
-    await this.bee.feed.makeWriter(strip(topicHex), this.key).uploadReference(this.batch, file.reference, index === undefined ? {} : { index })
-    return file.reference.toHex()
+    await this.bee.feed.makeWriter(strip(topicHex), this.key).uploadReference(this.batch, blob.reference, index === undefined ? {} : { index })
+    return blob.reference.toHex()
+  }
+
+  /** Content a member published: a `bzz` file (manifest) or a raw blob. */
+  async readContent(ref: string): Promise<Uint8Array> {
+    try {
+      return (await this.bee.file.download(ref)).data.toUint8Array()
+    } catch {
+      return (await this.bee.data.download(ref)).toUint8Array()
+    }
   }
 
   async readFeedPayload(owner: string, topicHex: string, index: number): Promise<Uint8Array | null> {
@@ -114,7 +127,7 @@ export class Swarm {
   async readFeedJson<T>(owner: string, topicHex: string): Promise<T | null> {
     try {
       const r = await this.bee.feed.makeReader(strip(topicHex), strip(owner)).downloadReference()
-      return JSON.parse((await this.bee.file.download(r.reference)).data.toUtf8()) as T
+      return JSON.parse((await this.bee.data.download(r.reference)).toUtf8()) as T
     } catch {
       return null
     }

@@ -30,7 +30,7 @@ The pipeline, step by step:
 1. **Ingest.** The GSOC doorbell gives low latency. Every known member's journal is also polled slowly, and the steward rings its own doorbell as a canary; if the canary doesn't come back, it re-subscribes. A stranger's first entry must be a `member.join`; anything else is ignored.
 2. **Reduce.** Each entry, accepted or rejected, becomes a ledger entry with its outcome and the new state hash.
 3. **Ledger.** Pages of at most 4 KiB go out as a sequence feed.
-4. **Views.** Changed views are republished as JSON files behind feeds; feed indices are tracked locally.
+4. **Views.** Changed views are republished as raw JSON blobs behind feeds, so Freedom pages can read them with `swarm_readData`. Post views embed the hash-checked markdown body. Feed indices are tracked locally, and a new view format republishes every view.
 5. **Adopt.** Accepted content is re-stamped with `PUT /stewardship`. Every journal chunk the ledger references is re-uploaded with the community batch, so an audit still works after members' batches expire.
 
 The local state file is only a cache. When `DATA_DIR` is empty, the steward replays its own

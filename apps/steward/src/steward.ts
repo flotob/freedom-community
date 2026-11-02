@@ -8,6 +8,7 @@ import {
 import { Swarm, type JournalEntry } from './swarm.ts'
 import { Store, type StoreData } from './store.ts'
 import { communityView, dirtyFor, homeViews, memberView, membersView, postView, viewTopic, type ViewStamp } from './views.ts'
+import { sha256Hex } from '@freedom-community/protocol'
 import { audit } from './audit.ts'
 
 export interface StewardOptions {
@@ -22,6 +23,10 @@ export interface StewardOptions {
 export interface LedgerEntry { id: string; soc: string; receivedAt: number; ok: boolean; reason?: string; stateHash: string }
 
 const PAGE_LIMIT = 3800 // bytes; a ledger page must fit one 4 KiB chunk
+/** 1: views as bzz files. 2: views as raw blobs, post bodies embedded. */
+const VIEW_FORMAT = 2
+/** Bodies larger than this stay out of views; the app reads them itself. */
+const MAX_BODY_BYTES = 256 * 1024
 
 export class Steward {
   readonly swarm: Swarm
@@ -45,6 +50,8 @@ export class Steward {
   private fresh: boolean
   /** Journal chunks read this session, so re-stamping needs no second fetch. */
   private raw = new Map<string, JournalEntry>()
+  /** Post and comment bodies by content reference (null: unavailable or hash mismatch). */
+  private bodies = new Map<string, string | null>()
   readonly log: (...a: unknown[]) => void
   private opts: StewardOptions
 
@@ -73,6 +80,11 @@ export class Steward {
 
   async start(): Promise<void> {
     if (this.fresh) await this.recover()
+    if ((this.data.viewFormat ?? 1) !== VIEW_FORMAT) {
+      if (this.data.genesisRef) this.log(`view format ${this.data.viewFormat ?? 1} -> ${VIEW_FORMAT}: republishing every view`)
+      this.allViewsDirty()
+      this.data.viewFormat = VIEW_FORMAT
+    }
     if (!this.data.genesisRef) {
       this.data.genesisRef = await this.swarm.uploadJson(this.opts.genesis, 'genesis.json')
       this.dirty.add('community')
@@ -101,12 +113,31 @@ export class Steward {
     this.data.ledgerPage = r.pages
     this.data.cursors = r.cursors
     // Views may lag the ledger if the previous run died between the two: rebuild them all.
-    this.dirty.add('community').add('home').add('members')
-    for (const id of Object.keys(r.state.posts)) this.dirty.add(`post/${id}`)
-    for (const id of Object.keys(r.state.members)) this.dirty.add(`member/${id}`)
+    this.allViewsDirty()
     this.fresh = false
     this.save()
     this.log(`recovered: ${r.pages} ledger pages, ${r.entries} entries, state ${r.finalStateHash}`)
+  }
+
+  private allViewsDirty(): void {
+    this.dirty.add('community').add('home').add('members')
+    for (const id of Object.keys(this.state.posts)) this.dirty.add(`post/${id}`)
+    for (const id of Object.keys(this.state.members)) this.dirty.add(`member/${id}`)
+  }
+
+  /** Fetch (once) the bodies the given references point at, checking each against its hash. */
+  private async loadBodies(items: { ref?: string | null; hash?: string | null }[]): Promise<void> {
+    await Promise.all(items.filter((i) => i.ref && !this.bodies.has(i.ref)).map(async ({ ref, hash }) => {
+      try {
+        const bytes = await this.swarm.readContent(ref!)
+        const text = new TextDecoder().decode(bytes)
+        const ok = bytes.length <= MAX_BODY_BYTES && (!hash || sha256Hex(text) === hash)
+        if (!ok) this.log('body not embedded', ref, bytes.length > MAX_BODY_BYTES ? 'too large' : 'hash mismatch')
+        this.bodies.set(ref!, ok ? text : null)
+      } catch (e) {
+        this.log('body read failed (will retry with the next view build)', ref, String(e))
+      }
+    }))
   }
 
   status() {
@@ -254,7 +285,12 @@ export class Steward {
       if (name === 'community') docs.push({ name, doc: communityView(s, stamp) })
       else if (name === 'home') docs.push(...homeViews(s, stamp))
       else if (name === 'members') docs.push({ name, doc: membersView(s, stamp) })
-      else if (name.startsWith('post/')) { const doc = postView(s, name.slice(5), stamp); if (doc) docs.push({ name, doc }) }
+      else if (name.startsWith('post/')) {
+        const p = s.posts[name.slice(5)]
+        if (p) await this.loadBodies([{ ref: p.content, hash: p.contentHash }, ...p.comments.map((c) => ({ ref: s.comments[c]?.content, hash: s.comments[c]?.contentHash }))])
+        const doc = postView(s, name.slice(5), stamp, (ref) => (ref ? this.bodies.get(ref) ?? null : null))
+        if (doc) docs.push({ name, doc })
+      }
       else if (name.startsWith('member/')) { const doc = memberView(s, name.slice(7), stamp); if (doc) docs.push({ name, doc }) }
     }
     await Promise.all(docs.map(async ({ name, doc }) => {

@@ -50,17 +50,24 @@ export function homeViews(s: State, stamp: ViewStamp) {
   }))
 }
 
-export function postView(s: State, id: string, stamp: ViewStamp) {
+/** Markdown of a content reference, if the steward has it (checked against its hash). */
+export type Bodies = (ref: string | undefined | null) => string | null
+
+export function postView(s: State, id: string, stamp: ViewStamp, bodies: Bodies = () => null) {
   const p = s.posts[id]
   if (!p) return null
   const comments = p.comments.map((cid) => s.comments[cid]).filter(Boolean).map((c) => ({
     id: c.id, author: c.author, authorName: s.members[c.author]?.profile.name ?? null, createdAt: c.createdAt,
     status: c.status, hiddenReason: c.hiddenReason ?? null, text: c.status === 'published' ? c.text ?? null : null,
-    content: c.status === 'published' ? c.content ?? null : null, likeCount: c.likes.length,
+    content: c.status === 'published' ? c.content ?? null : null,
+    body: c.status === 'published' ? bodies(c.content) : null, likeCount: c.likes.length,
   }))
   return {
     v: 0, kind: 'post', ...stamp, ...postCard(s, p), status: p.status, hiddenReason: p.hiddenReason ?? null,
-    content: p.status === 'published' ? p.content : null, contentHash: p.contentHash, likes: p.likes, comments,
+    content: p.status === 'published' ? p.content : null, contentHash: p.contentHash,
+    // The post's markdown, embedded so the app needs no second read (null if unavailable).
+    body: p.status === 'published' ? bodies(p.content) : null,
+    likes: p.likes, comments,
   }
 }
 

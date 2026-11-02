@@ -17,6 +17,8 @@ export interface StoreData {
   views: Record<string, string>
   /** Next feed index per view topic (skips feed lookups). */
   viewIndex: Record<string, number>
+  /** Shape of the published views; a steward with a newer shape republishes them all. */
+  viewFormat?: number
 }
 
 export class Store {
