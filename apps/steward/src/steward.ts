@@ -23,8 +23,8 @@ export interface StewardOptions {
 export interface LedgerEntry { id: string; soc: string; receivedAt: number; ok: boolean; reason?: string; stateHash: string }
 
 const PAGE_LIMIT = 3800 // bytes; a ledger page must fit one 4 KiB chunk
-/** 1: views as bzz files. 2: views as raw blobs, post bodies embedded. 3: member views carry journal receipts. */
-const VIEW_FORMAT = 3
+/** 1: views as bzz files. 2: views as raw blobs, post bodies embedded. 3: member views carry journal receipts. 4: member cards carry a bio line. */
+const VIEW_FORMAT = 4
 const RECEIPTS_KEPT = 20
 /** Bodies larger than this stay out of views; the app reads them itself. */
 const MAX_BODY_BYTES = 256 * 1024

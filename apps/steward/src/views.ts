@@ -75,7 +75,12 @@ export function membersView(s: State, stamp: ViewStamp) {
   const members = Object.values(s.members).sort((a, b) => a.joinedAt - b.joinedAt || (a.owner < b.owner ? -1 : 1))
   return {
     v: 0, kind: 'members', ...stamp,
-    members: members.map((m) => ({ owner: m.owner, name: m.profile.name ?? null, avatar: m.profile.avatar ?? null, roles: effectiveRoles(s, m.owner), badges: m.badges, joinedAt: m.joinedAt })),
+    members: members.map((m) => ({
+      owner: m.owner, name: m.profile.name ?? null, avatar: m.profile.avatar ?? null,
+      // the card's line: the bio's opening, plain
+      bio: m.profile.bio ? m.profile.bio.replace(/[#*_>`[\]]/g, '').replace(/\s+/g, ' ').trim().slice(0, 140) : null,
+      roles: effectiveRoles(s, m.owner), badges: m.badges, joinedAt: m.joinedAt,
+    })),
   }
 }
 
