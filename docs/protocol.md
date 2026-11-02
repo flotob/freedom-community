@@ -70,8 +70,9 @@ A journal entry is one action:
 | `mod.hide` | `mod.hide` | `{ target, reason }` |
 | `role.grant` / `role.revoke` | `role.manage` | `{ member, role }` |
 | `badge.grant` / `badge.revoke` | `badge.manage` | `{ member, badge }` |
-| `community.update` | `community.manage` | `{ name?, theme?, categories?, badges?, roles?, leaderboards? }` |
+| `community.update` | `community.manage` | `{ name?, theme?, categories?, badges?, roles?, leaderboards?, plans?, treasury? }` |
 | `library.create` / `library.update` | `library.manage` | `{ name, description?, cover?, postToFeed? }` / `{ library, …, archived? }`; posting into one needs `library.post` (`post.create` with `library`) |
+| `plan.claim` | (any member) | `{ plan, tx }`: claim a plan for an xDAI payment on Gnosis Chain. The steward checks the transaction on chain (succeeded, to `treasury`, at least `price`) and records its verdict in the ledger, accepted or not. An approved claim grants the plan's badge until `max(current expiry, now) + days`. Each transaction is claimed once. Expired badges carry no roles: permission checks use the entry's `receivedAt`. |
 | `follow.set` | (any member) | `{ member, on }`: follow or unfollow; not yourself |
 | `badge.score` | `badge.score` | `{ member, badge, score }` (the member must hold the badge) |
 | `quest.create` | `quest.manage` | `{ title, description?, kind: text\|mcq\|upload, options?, multi?, partial?, secret?, autoApprove?, opensAt?, closesAt?, tries?, rewards?, prerequisites?, privacy?, image? }` |

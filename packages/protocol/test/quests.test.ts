@@ -197,3 +197,24 @@ test('follows: any member may follow another, not themselves', () => {
   j.act(ALICE, 'follow.set', { member: BOB, on: false })
   assert.deepEqual(j.state.members[ALICE].follows, [])
 })
+
+test('plans: a verified payment grants a badge for its days, once per transaction; expired badges carry no roles', () => {
+  const j = new Journal()
+  j.act(ALICE, 'member.join')
+  const badges = [...genesis.badges, { id: 'supporter', name: 'Supporter', roles: ['reviewer'] }]
+  const TX = '0x' + 'ab'.repeat(32)
+  assert.equal(j.act(OWNER, 'community.update', { badges, plans: [{ id: 'sup', name: 'Supporter', badge: 'supporter', price: '10000000000000000', days: 30 }], treasury: '0x' + '7'.repeat(40) }).ok, true)
+  assert.equal(j.act(ALICE, 'plan.claim', { plan: 'sup', tx: TX }).reason, 'unverified')
+  assert.equal(j.act(ALICE, 'plan.claim', { plan: 'sup', tx: TX }, { approved: false }).reason, 'payment-not-found')
+  const t0 = j.t
+  assert.equal(j.act(ALICE, 'plan.claim', { plan: 'sup', tx: TX }, { approved: true }).ok, true)
+  assert.equal(j.state.members[ALICE].badgeUntil!.supporter, t0 + 30 * 86_400_000)
+  assert.equal(j.act(ALICE, 'plan.claim', { plan: 'sup', tx: TX.toUpperCase().replace('0X', '0x') }, { approved: true }).reason, 'already-claimed')
+  // the badge's role counts while the plan runs, not after
+  const sub = j.act(OWNER, 'quest.create', { title: 'q', kind: 'text' }).id
+  assert.equal(j.act(BOB, 'member.join').ok, true)
+  const s2 = j.act(BOB, 'quest.submit', { quest: sub, answer: { text: 'x' } }).id
+  assert.equal(j.act(ALICE, 'quest.review', { submission: s2, decision: 'approved' }).ok, true)
+  j.t = t0 + 31 * 86_400_000
+  assert.equal(j.act(ALICE, 'quest.review', { submission: s2, decision: 'rejected' }).reason, 'not-permitted')
+})

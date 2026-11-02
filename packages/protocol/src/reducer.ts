@@ -57,7 +57,7 @@ function apply(s: State, a: Action, ctx: Ctx, effects: Effect[]): string | null 
     return null
   }
   if (!me) return 'not-member'
-  const need = (perm: string) => (can(s, ctx.author, perm) ? null : 'not-permitted')
+  const need = (perm: string) => (can(s, ctx.author, perm, ctx.at) ? null : 'not-permitted')
 
   switch (a.type) {
     case 'profile.set': {
@@ -75,7 +75,7 @@ function apply(s: State, a: Action, ctx: Ctx, effects: Effect[]): string | null 
       if (a.body.library !== undefined) {
         const lib = s.libraries?.[a.body.library]
         if (!lib || lib.archived) return 'unknown-target'
-        if (!can(s, ctx.author, 'library.post')) return 'not-permitted'
+        if (!can(s, ctx.author, 'library.post', ctx.at)) return 'not-permitted'
       }
       const post: Post = { id: ctx.id, author: ctx.author, createdAt: ctx.at, title: a.body.title, excerpt: a.body.excerpt, content: a.body.content, contentHash: a.body.contentHash, image: a.body.image, categories: a.body.categories, status: 'published', likes: [], comments: [] }
       if (a.body.library !== undefined) post.library = a.body.library
@@ -89,7 +89,7 @@ function apply(s: State, a: Action, ctx: Ctx, effects: Effect[]): string | null 
       if (!post) return 'unknown-target'
       if (post.author !== ctx.author) return 'not-author'
       if (post.status !== 'published') return 'not-editable'
-      if (!can(s, ctx.author, 'post.create')) return 'not-permitted'
+      if (!can(s, ctx.author, 'post.create', ctx.at)) return 'not-permitted'
       if ((a.body.content === undefined) !== (a.body.contentHash === undefined)) return 'content-needs-hash'
       if (a.body.categories?.some((c) => !s.community.categories.some((k) => k.id === c))) return 'unknown-category'
       for (const k of ['title', 'excerpt', 'content', 'contentHash', 'categories'] as const) {
@@ -157,7 +157,7 @@ function apply(s: State, a: Action, ctx: Ctx, effects: Effect[]): string | null 
       if (!member) return 'unknown-member'
       if (!s.community.roles.some((r) => r.id === a.body.role)) return 'unknown-role'
       // Only an all-powerful member hands out or takes away all-powerful roles.
-      if (isOwnerRole(s, a.body.role) && !can(s, ctx.author, '*')) return 'not-permitted'
+      if (isOwnerRole(s, a.body.role) && !can(s, ctx.author, '*', ctx.at)) return 'not-permitted'
       if (a.type === 'role.grant') {
         member.roles = addSorted(member.roles, a.body.role)
         return null
@@ -175,11 +175,26 @@ function apply(s: State, a: Action, ctx: Ctx, effects: Effect[]): string | null 
       const badge = s.community.badges.find((b) => b.id === a.body.badge)
       if (!badge) return 'unknown-badge'
       // A badge carrying an all-powerful role is an owner grant in disguise.
-      if (badge.roles.some((r) => isOwnerRole(s, r)) && !can(s, ctx.author, '*')) return 'not-permitted'
+      if (badge.roles.some((r) => isOwnerRole(s, r)) && !can(s, ctx.author, '*', ctx.at)) return 'not-permitted'
       if (a.type === 'badge.grant') {
         if (badge.enabled === false) return 'badge-disabled'
         member.badges = addSorted(member.badges, badge.id)
       } else detachBadge(member, badge.id)
+      return null
+    }
+    case 'plan.claim': {
+      const plan = s.community.plans?.find((p) => p.id === a.body.plan)
+      if (!plan || !s.community.treasury) return 'unknown-plan'
+      if (s.claims?.[a.body.tx]) return 'already-claimed'
+      // The steward checked the payment on chain (to the treasury, at least the price, succeeded).
+      if (!ctx.verdict) return 'unverified'
+      if (!ctx.verdict.approved) return 'payment-not-found'
+      const badge = s.community.badges.find((b) => b.id === plan.badge)
+      if (!badge || badge.enabled === false) return 'unknown-badge'
+      me.badges = addSorted(me.badges, badge.id)
+      const from = Math.max(me.badgeUntil?.[badge.id] ?? 0, ctx.at)
+      me.badgeUntil = { ...me.badgeUntil, [badge.id]: from + plan.days * 86_400_000 }
+      s.claims = { ...s.claims, [a.body.tx]: ctx.author }
       return null
     }
     case 'follow.set': {
@@ -297,13 +312,19 @@ function apply(s: State, a: Action, ctx: Ctx, effects: Effect[]): string | null 
     case 'community.update': {
       const denied = need('community.manage')
       if (denied) return denied
-      if (a.body.roles && !can(s, ctx.author, '*')) return 'not-permitted'
+      if (a.body.roles && !can(s, ctx.author, '*', ctx.at)) return 'not-permitted'
       if (a.body.roles && !a.body.roles.some((r) => r.permissions.includes('*'))) return 'needs-owner-role'
       if (a.body.name !== undefined) s.community.name = a.body.name
       if (a.body.theme !== undefined) s.community.theme = a.body.theme
       if (a.body.categories !== undefined) s.community.categories = a.body.categories
       if (a.body.badges !== undefined) s.community.badges = a.body.badges
       if (a.body.roles !== undefined) s.community.roles = a.body.roles
+      if (a.body.plans !== undefined) {
+        const badges = a.body.badges ?? s.community.badges
+        if (a.body.plans.some((p) => !badges.some((b) => b.id === p.badge))) return 'unknown-badge'
+        s.community.plans = a.body.plans
+      }
+      if (a.body.treasury !== undefined) s.community.treasury = a.body.treasury
       if (a.body.leaderboards !== undefined) {
         const badges = a.body.badges ?? s.community.badges
         if (a.body.leaderboards.some((l) => !badges.some((b) => b.id === l.badge))) return 'unknown-badge'

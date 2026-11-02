@@ -23,7 +23,7 @@ if (cmd === 'run') {
   const genesis = JSON.parse(env.GENESIS_JSON ?? readFileSync(need('GENESIS'), 'utf8'))
   const steward = new Steward({
     swarm, genesis, dataDir: env.DATA_DIR ?? './steward-data', sealKey: sealKeyFrom(key),
-    pollMs: Number(env.POLL_MS ?? 30_000), canaryMs: Number(env.CANARY_MS ?? 300_000), statusMs: Number(env.STATUS_MS ?? 300_000), instance: env.STEWARD_INSTANCE, takeoverMs: env.TAKEOVER_MS ? Number(env.TAKEOVER_MS) : undefined,
+    pollMs: Number(env.POLL_MS ?? 30_000), canaryMs: Number(env.CANARY_MS ?? 300_000), statusMs: Number(env.STATUS_MS ?? 300_000), gnosisRpc: env.GNOSIS_RPC_URL, instance: env.STEWARD_INSTANCE, takeoverMs: env.TAKEOVER_MS ? Number(env.TAKEOVER_MS) : undefined,
   })
   // Release the lease on the way out, so a standby (or the next deploy) takes over at once.
   const shutdown = () => {

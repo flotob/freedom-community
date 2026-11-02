@@ -39,6 +39,7 @@ export function communityView(s: State, stamp: ViewStamp) {
     id: c.id, name: c.name, origin: c.origin, steward: c.steward, theme: c.theme ?? null, public: c.public,
     categories: c.categories, badges: c.badges, roles: c.roles.map((r) => ({ id: r.id, name: r.name, permissions: r.permissions })),
     leaderboards: c.leaderboards ?? [],
+    plans: c.plans ?? [], treasury: c.treasury ?? null,
     counts: { members: Object.keys(s.members).length, posts: Object.values(s.posts).filter(visible).length, libraries: Object.values(s.libraries ?? {}).filter((l) => !l.archived).length },
     homePages: Math.max(1, Math.ceil(Object.values(s.posts).filter((p) => onHome(s, p)).length / PAGE_SIZE)),
   }
@@ -99,6 +100,7 @@ export function memberView(s: State, owner: string, stamp: ViewStamp, journal?: 
   return {
     v: 0, kind: 'member', ...stamp, owner, member: true, profile: m.profile, roles: m.roles, effectiveRoles: effectiveRoles(s, owner), badges: m.badges, joinedAt: m.joinedAt,
     scores: m.scores ?? {},
+    badgeUntil: m.badgeUntil ?? {},
     follows: m.follows ?? [],
     followers: Object.values(s.members).filter((x) => x.follows?.includes(owner)).length,
     posts: posts.map((p) => postCard(s, p)), journal: journal ?? null,
@@ -274,6 +276,7 @@ export function dirtyFor(type: string, author: string, body: Record<string, unkn
     case 'like.set': case 'mod.hide': return ['community', 'home', `post/${post}`, ...libraryOf(s, post)]
     case 'library.create': return ['community', 'libraries', `library/${id}`]
     case 'follow.set': return [`member/${author}`, `member/${body.member}`]
+    case 'plan.claim': return ['members', `member/${author}`, 'leaderboards']
     case 'library.update': return ['community', 'libraries', `library/${body.library}`, 'home']
     case 'role.grant': case 'role.revoke': return ['members', `member/${body.member}`]
     case 'badge.grant': case 'badge.revoke': case 'badge.score': return ['members', `member/${body.member}`, 'leaderboards']

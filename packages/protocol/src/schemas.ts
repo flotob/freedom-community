@@ -38,6 +38,8 @@ export const BadgeSchema = z.object({
   /** false: no new grants (holders keep it). */
   enabled: z.boolean().optional(),
 })
+/** A paid plan: pay `price` (wei of xDAI, Gnosis Chain) to the community's treasury, get `badge` for `days`. */
+export const PlanSchema = z.object({ id: slug, name: shortText(80), description: shortText(500).optional(), badge: slug, price: z.string().regex(/^[1-9]\d{0,29}$/), days: z.number().int().min(1).max(3650) })
 /** A leaderboard ranks one badge's scores. */
 export const LeaderboardSchema = z.object({ id: slug, name: shortText(200), description: shortText(500).optional(), badge: slug })
 export const CategorySchema = z.object({ id: slug, name: shortText(40), color: z.string().max(20).optional() })
@@ -62,6 +64,7 @@ export type Role = z.infer<typeof RoleSchema>
 export type Badge = z.infer<typeof BadgeSchema>
 export type Category = z.infer<typeof CategorySchema>
 export type Leaderboard = z.infer<typeof LeaderboardSchema>
+export type Plan = z.infer<typeof PlanSchema>
 
 /** Sealed to the steward's X25519 key (X25519 -> HKDF-SHA256 -> AES-256-GCM); AAD binds the context. */
 export const SealedSchema = z.object({
@@ -140,7 +143,12 @@ export const ACTION_BODIES = {
     badges: z.array(BadgeSchema).max(200).optional(),
     roles: z.array(RoleSchema).min(1).max(50).optional(),
     leaderboards: z.array(LeaderboardSchema).max(50).optional(),
+    plans: z.array(PlanSchema).max(20).optional(),
+    /** Where plan payments go (Gnosis Chain). */
+    treasury: address.optional(),
   }),
+  /** Claim a plan for a payment made on Gnosis Chain (`tx`); the steward verifies it on chain. */
+  'plan.claim': z.object({ plan: slug, tx: z.string().regex(/^0x[0-9a-fA-F]{64}$/).transform((h) => h.toLowerCase()) }),
   /** A library: a curated shelf of posts with its own page (davinci's libraries; public ones for now). */
   'library.create': z.object({ name: shortText(120), description: shortText(2000).optional(), cover: ref.optional(), postToFeed: z.boolean().optional() }),
   'library.update': z.object({ library: actionIdSchema, name: shortText(120).optional(), description: shortText(2000).optional(), cover: ref.optional(), postToFeed: z.boolean().optional(), archived: z.boolean().optional() }),

@@ -23,6 +23,8 @@ export interface StewardOptions {
   log?: (...a: unknown[]) => void
   /** Opens sealed quest answers and solutions (derived from the steward key). */
   sealKey?: SealKey
+  /** Gnosis Chain JSON-RPC, to verify plan payments. */
+  gnosisRpc?: string
   /** How often to publish the `status` view (node and steward health); 0 disables it. */
   statusMs?: number
   /** This process's name in the status view (the liveness lease); random if unset. */
@@ -34,8 +36,8 @@ export interface StewardOptions {
 export interface LedgerEntry { id: string; soc: string; receivedAt: number; ok: boolean; reason?: string; stateHash: string; verdict?: Verdict }
 
 const PAGE_LIMIT = 3800 // bytes; a ledger page must fit one 4 KiB chunk
-/** 1: views as bzz files. 2: views as raw blobs, post bodies embedded. 3: member views carry journal receipts. 4: member cards carry a bio line. 5: the index view. 6: seal key, quests, leaderboards. 7: community view lists leaderboards. 8: genesis view. 9: comments carry parent and avatar. 10: libraries. 11: follows, inboxes. */
-const VIEW_FORMAT = 11
+/** 1: views as bzz files. 2: views as raw blobs, post bodies embedded. 3: member views carry journal receipts. 4: member cards carry a bio line. 5: the index view. 6: seal key, quests, leaderboards. 7: community view lists leaderboards. 8: genesis view. 9: comments carry parent and avatar. 10: libraries. 11: follows, inboxes. 12: plans. */
+const VIEW_FORMAT = 12
 const RECEIPTS_KEPT = 20
 const INBOX_KEPT = 50
 /** Bodies larger than this stay out of views; the app reads them itself. */
@@ -384,13 +386,13 @@ export class Steward {
         this.data.cursors[owner] = index + 1
         continue
       }
-      this.apply(entry)
+      await this.apply(entry)
     }
   }
 
-  private apply(entry: JournalEntry): void {
+  private async apply(entry: JournalEntry): Promise<void> {
+    const verdict = (await this.paymentVerdict(entry)) ?? this.verdictFor(entry)
     const receivedAt = Date.now()
-    const verdict = this.verdictFor(entry)
     const prev = this.state
     const { state, outcome } = reduce(this.state, entry.json, { author: entry.owner, index: entry.index, receivedAt, verdict })
     this.data.state = state
@@ -399,7 +401,7 @@ export class Steward {
     const hash = stateHash(state)
     this.pending.push(outcome.ok
       ? { id: outcome.id, soc: entry.soc, receivedAt, ok: true, stateHash: hash, ...(verdict ? { verdict } : {}) }
-      : { id: outcome.id, soc: entry.soc, receivedAt, ok: false, reason: outcome.reason, stateHash: hash })
+      : { id: outcome.id, soc: entry.soc, receivedAt, ok: false, reason: outcome.reason, stateHash: hash, ...(verdict ? { verdict } : {}) })
     this.data.pendingRestamp.push({ owner: entry.owner, index: entry.index })
     this.raw.set(`${entry.owner}:${entry.index}`, entry)
     if (outcome.ok) {
@@ -409,6 +411,42 @@ export class Steward {
       this.notify(prev, state, entry.json, entry.owner, outcome.id, receivedAt)
     }
     this.log(outcome.ok ? 'accepted' : `rejected (${outcome.reason})`, outcome.id, (entry.json as { type?: string })?.type)
+  }
+
+  /**
+   * A plan claim's verdict: the payment on Gnosis Chain succeeded, went to the treasury and
+   * paid at least the price. Waits up to ~40 s for the receipt (the member may claim right
+   * after sending). Without an RPC there is no verdict and the claim stays unverified.
+   */
+  private async paymentVerdict(entry: JournalEntry): Promise<Verdict | undefined> {
+    const j = entry.json as { type?: string; body?: { plan?: string; tx?: string } }
+    if (j?.type !== 'plan.claim' || !this.opts.gnosisRpc || typeof j.body?.tx !== 'string') return undefined
+    const plan = this.state.community.plans?.find((p) => p.id === j.body?.plan)
+    const treasury = this.state.community.treasury
+    if (!plan || !treasury) return undefined
+    const rpc = async <T>(method: string, params: unknown[]): Promise<T | null> => {
+      try {
+        const r = await fetch(this.opts.gnosisRpc!, { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ jsonrpc: '2.0', id: 1, method, params }), signal: AbortSignal.timeout(15_000) })
+        return ((await r.json()) as { result?: T }).result ?? null
+      } catch {
+        return null
+      }
+    }
+    const tx = j.body.tx.toLowerCase()
+    for (let i = 0; i < 8; i++) {
+      const [t, receipt] = await Promise.all([
+        rpc<{ to?: string; value?: string; chainId?: string }>('eth_getTransactionByHash', [tx]),
+        rpc<{ status?: string }>('eth_getTransactionReceipt', [tx]),
+      ])
+      if (t && receipt) {
+        const ok = receipt.status === '0x1' && t.to?.toLowerCase() === treasury.toLowerCase() && BigInt(t.value ?? '0x0') >= BigInt(plan.price) && (t.chainId === undefined || t.chainId === '0x64')
+        this.log(`payment ${tx}: ${ok ? 'verified' : 'does not pay this plan'}`)
+        return { approved: ok }
+      }
+      await new Promise((r) => setTimeout(r, 5000))
+    }
+    this.log(`payment ${tx}: not found on chain`)
+    return { approved: false }
   }
 
   /** Solutions opened so far, per quest. */

@@ -1,7 +1,7 @@
 // Community state: what the reducer folds the ledger into. Plain JSON, deterministic
 // (sorted arrays, no Maps), so its canonical hash is the same for every replayer.
 import { communityId, normalizeAddress } from './canonical.ts'
-import { GenesisSchema, type Badge, type Category, type Genesis, type Leaderboard, type Role, type Sealed } from './schemas.ts'
+import { GenesisSchema, type Badge, type Category, type Genesis, type Leaderboard, type Plan, type Role, type Sealed } from './schemas.ts'
 
 export interface Profile { name?: string; bio?: string; avatar?: string }
 
@@ -15,6 +15,8 @@ export interface Member {
   scores?: Record<string, number>
   /** Members this member follows (sorted); absent until the first follow. */
   follows?: string[]
+  /** Badges held for a limited time (plans): badge -> expiry (ms); absent until used. */
+  badgeUntil?: Record<string, number>
 }
 
 export interface Quest {
@@ -116,6 +118,8 @@ export interface State {
     theme?: Record<string, string>
     public: boolean
     leaderboards?: Leaderboard[]
+    plans?: Plan[]
+    treasury?: string
   }
   members: Record<string, Member>
   posts: Record<string, Post>
@@ -123,6 +127,8 @@ export interface State {
   /** Absent until the first quest (keeps the state hashes of older ledgers). */
   quests?: Record<string, Quest>
   libraries?: Record<string, Library>
+  /** Payments claimed for plans: tx hash -> member; absent until the first claim. */
+  claims?: Record<string, string>
   submissions?: Record<string, Submission>
   /** Actions folded so far, accepted or not. */
   seq: number
@@ -156,19 +162,26 @@ export function initialState(genesisInput: unknown): State {
   }
 }
 
-/** A member's own roles plus the roles their badges carry. */
-export function effectiveRoles(state: State, owner: string): string[] {
+/** Whether a held badge counts at time `at` (time-limited plan badges expire). */
+export function badgeActive(m: Member, badge: string, at?: number): boolean {
+  const until = m.badgeUntil?.[badge]
+  return until === undefined || at === undefined || at < until
+}
+
+/** A member's own roles plus the roles their (unexpired) badges carry at time `at`. */
+export function effectiveRoles(state: State, owner: string, at?: number): string[] {
   const m = state.members[owner]
   if (!m) return []
   const roles = new Set(m.roles)
   for (const badgeId of m.badges) {
+    if (!badgeActive(m, badgeId, at)) continue
     for (const r of state.community.badges.find((b) => b.id === badgeId)?.roles ?? []) roles.add(r)
   }
   return [...roles].sort()
 }
 
-export function can(state: State, owner: string, permission: string): boolean {
-  const roles = effectiveRoles(state, owner)
+export function can(state: State, owner: string, permission: string, at?: number): boolean {
+  const roles = effectiveRoles(state, owner, at)
   return state.community.roles.some((r) => roles.includes(r.id) && (r.permissions.includes('*') || r.permissions.includes(permission)))
 }
 
