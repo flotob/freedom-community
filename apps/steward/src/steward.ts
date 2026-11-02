@@ -155,6 +155,8 @@ export class Steward {
         const ok = bytes.length <= MAX_BODY_BYTES && (!hash || sha256Hex(text) === hash)
         if (!ok) this.log('body not embedded', ref, bytes.length > MAX_BODY_BYTES ? 'too large' : 'hash mismatch')
         this.bodies.set(ref!, ok ? text : null)
+        // Images the body shows (bzz://<ref>) are content too: re-stamp them with the community batch.
+        if (ok) for (const m of text.matchAll(/bzz:\/\/([0-9a-f]{64})/g)) this.data.pendingAdopt.push(m[1])
       } catch (e) {
         this.log('body read failed (will retry with the next view build)', ref, String(e))
       }
