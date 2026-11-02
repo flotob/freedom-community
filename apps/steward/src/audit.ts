@@ -2,6 +2,9 @@
 // Needs no steward state and no keys: anyone can run it.
 import { communityId, initialState, journalTopic, reduce, stateHash, stewardTopic, type State } from '@freedom-community/protocol'
 import { Swarm } from './swarm.ts'
+import { judge, openWithAesKey } from './seal.ts'
+import { viewTopic } from './views.ts'
+import type { Sealed } from '@freedom-community/protocol'
 import type { LedgerEntry } from './steward.ts'
 
 export interface AuditReport {
@@ -15,6 +18,9 @@ export interface AuditReport {
   state: State | null
   /** Next journal index per author, as the steward tracks it. */
   cursors: Record<string, number>
+  /** Closed quests whose reveal was checked, and answers re-judged against the recorded verdict. */
+  reveals?: number
+  rejudged?: number
   /** Every replayed entry in ledger order. */
   log: { owner: string; index: number; type: string; ok: boolean; reason?: string; receivedAt: number }[]
 }
@@ -32,6 +38,7 @@ export async function audit(swarm: Swarm, steward: string, community: string, lo
   if (communityId(genesis) !== community) throw new Error('genesis does not hash to the community id')
   let state = initialState(genesis)
   const journal = journalTopic(String(genesis.origin))
+  const verdicts = new Map<string, { approved: boolean } | undefined>()
   for (let p = 0; ; p++) {
     const raw = p === 0 ? first : await swarm.readFeedPayload(steward, ledgerTopic, p)
     if (!raw) break
@@ -48,6 +55,7 @@ export async function audit(swarm: Swarm, steward: string, community: string, lo
       if (entry.soc !== e.soc) report.mismatches.push({ id: e.id, problem: 'SOC address differs' })
       const r = reduce(state, entry.json, { author: owner, index, receivedAt: e.receivedAt, verdict: e.verdict })
       onEntry?.(state, r.state, entry.json, { author: owner, id: e.id, at: e.receivedAt, ok: r.outcome.ok })
+      verdicts.set(e.id, e.verdict)
       state = r.state
       if (r.outcome.ok !== e.ok || (!r.outcome.ok && r.outcome.reason !== e.reason)) report.mismatches.push({ id: e.id, problem: `outcome differs: replay ${JSON.stringify(r.outcome)}` })
       if (stateHash(state) !== e.stateHash) report.mismatches.push({ id: e.id, problem: 'state hash differs' })
@@ -59,5 +67,43 @@ export async function audit(swarm: Swarm, steward: string, community: string, lo
   }
   report.finalStateHash = stateHash(state)
   report.state = state
+  await checkReveals(swarm, steward, community, state, verdicts, journal, report)
   return report
+}
+
+/**
+ * Closed quests with sealed solutions get a reveal (quest-reveal/<id>): check that each
+ * revealed key opens the sealed data to what the reveal says, and that judging it again
+ * gives the verdict the ledger recorded. This turns steward-attested verdicts into
+ * verifiable ones once a quest is over.
+ */
+async function checkReveals(swarm: Swarm, steward: string, community: string, state: State, verdicts: Map<string, { approved: boolean } | undefined>, journal: string, report: AuditReport): Promise<void> {
+  type Reveal = { secret: { solutions?: string[]; correct?: string[] }; secretKey: string; answers: { submission: string; author: string; answer: { text?: string; selected?: string[] } | null; key: string | null }[] }
+  for (const q of Object.values(state.quests ?? {})) {
+    if (!q.secret) continue
+    const reveal = await swarm.readFeedJson<Reveal>(steward, viewTopic(community, `quest-reveal/${q.id}`))
+    if (!reveal) continue
+    report.reveals = (report.reveals ?? 0) + 1
+    try {
+      if (JSON.stringify(JSON.parse(openWithAesKey(q.secret, Buffer.from(reveal.secretKey, 'base64')))) !== JSON.stringify(reveal.secret)) report.mismatches.push({ id: q.id, problem: 'reveal: solutions differ from the sealed ones' })
+    } catch {
+      report.mismatches.push({ id: q.id, problem: 'reveal: the key does not open the sealed solutions' })
+      continue
+    }
+    for (const a of reveal.answers) {
+      if (!a.key || !a.answer) continue
+      const [owner, idx] = a.submission.split(':')
+      const entry = await swarm.readJournal(owner, journal, Number(idx))
+      const sealed = (entry?.json as { body?: { answer?: { sealed?: Sealed } } })?.body?.answer?.sealed
+      try {
+        if (!sealed || JSON.stringify(JSON.parse(openWithAesKey(sealed, Buffer.from(a.key, 'base64')))) !== JSON.stringify(a.answer)) throw new Error()
+      } catch {
+        report.mismatches.push({ id: a.submission, problem: 'reveal: the key does not open the journal entry to this answer' })
+        continue
+      }
+      const v = verdicts.get(a.submission)
+      if (v && judge(q, reveal.secret, a.answer).approved !== v.approved) report.mismatches.push({ id: a.submission, problem: 'reveal: re-judging disagrees with the recorded verdict' })
+      else report.rejudged = (report.rejudged ?? 0) + 1
+    }
+  }
 }

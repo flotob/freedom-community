@@ -111,7 +111,14 @@ Rewards land **once per submission** (`paid`):
 
 Other rules: submissions need the quest open (`opensAt ≤ receivedAt < closesAt`, not `closed`), every prerequisite met (badge held, score within `min`/`max`), no pending or approved submission, not disqualified, and a try left (`tries`, default 1).
 
-**Trust:** verdicts on sealed answers are attested by the steward. An auditor checks that the replay follows them, but not that they are right. Planned: when a quest closes, the steward publishes its solutions and each submission's ECDH shared secret, so anyone can open every answer and re-judge.
+**Trust:** while a quest runs, verdicts on sealed answers are attested by the steward. An auditor checks that the replay follows them, but not that they are right.
+
+**When the quest closes,** the steward publishes `quest-reveal/<id>`: the solutions, the AES key of the sealed solutions, and for every sealed answer its plaintext and the AES key that opens that one message (never the steward's own key). An auditor (`steward audit`) then checks:
+- the revealed key opens the quest's sealed solutions to the revealed ones;
+- each answer key opens the member's journal entry to the revealed answer;
+- judging it again (`judgeAnswer`, in the protocol package) gives the verdict the ledger recorded.
+
+So after the close, every verdict is verifiable.
 
 Content larger than an entry is uploaded by the member (`swarm_publishData`) and referenced with its SHA-256. Once the steward accepts it, it **adopts** the content: it re-stamps it on the community batch (`PUT /stewardship`) so it outlives the member's batch (S3).
 
@@ -157,6 +164,7 @@ The app reads pre-computed JSON documents. Each is a steward sequence feed (topi
 | `libraries` / `library/<id>` | the libraries with post counts / one library and its posts (a library's posts reach `home` only with `postToFeed`) |
 | `quests` | every quest's public part (never `secret`; `hasSolutions` instead), with counts |
 | `quest/<id>` | the quest and its feed; answers only when both quest and submission are public and the answer isn't sealed; a `secret` quest shows no rows |
+| `quest-reveal/<id>` | after a quest with sealed solutions closes: the solutions and each sealed answer with its message key, for re-judging |
 | `review` | pending submissions with their (unsealed) answers, for reviewers |
 | `index` | `{views: {<view name>: <latest feed index>}}`, republished after every view update. A latest-entry lookup costs seconds in a light node (measured 0.8–3.4 s in Freedom), and an exact-index read costs a fraction of that, so apps read this once and then read views by index. |
 

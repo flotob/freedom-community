@@ -392,3 +392,29 @@ function stripUndefined<T extends Record<string, unknown>>(o: T): T {
 function lastHolder(s: State, roleId: string, owner: string): boolean {
   return !Object.values(s.members).some((m) => m.owner !== owner && m.roles.includes(roleId))
 }
+
+/**
+ * Judge an opened answer against opened solutions. Text: trim + lower-case equality with
+ * any solution. mcq: picks are de-duplicated; single-select needs exactly one correct
+ * pick; multi-select needs the exact correct set, or with `partial` any non-empty set of
+ * correct picks (multiplier = number of picks). Any wrong pick fails.
+ */
+export function judgeAnswer(
+  quest: { kind: string; options?: string[]; multi?: boolean; partial?: boolean },
+  secret: { solutions?: string[]; correct?: string[] },
+  answer: { text?: string; selected?: string[] },
+): { approved: boolean; multiplier?: number } {
+  if (quest.kind === 'text') {
+    const a = (answer.text ?? '').trim().toLowerCase()
+    return { approved: !!a && (secret.solutions ?? []).some((s) => s.trim().toLowerCase() === a) }
+  }
+  if (quest.kind === 'mcq') {
+    const picks = [...new Set(answer.selected ?? [])].filter((p) => quest.options?.includes(p))
+    const correct = new Set(secret.correct ?? [])
+    if (!picks.length || picks.some((p) => !correct.has(p))) return { approved: false }
+    if (!quest.multi) return { approved: picks.length === 1 }
+    if (quest.partial) return { approved: true, multiplier: picks.length }
+    return { approved: picks.length === correct.size }
+  }
+  return { approved: false }
+}

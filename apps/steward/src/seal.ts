@@ -19,14 +19,18 @@ export function sealKeyFrom(stewardKeyHex: string): SealKey {
   return { privateKey, publicB64 }
 }
 
-/** Open a sealed payload; throws unless its AAD is exactly `aad` and it authenticates. */
-export function openSealed(sealed: Sealed, key: SealKey, aad: string): string {
+/** The AES key of one sealed message (what a reveal publishes: it opens this message only). */
+export function sealedAesKey(sealed: Sealed, key: SealKey, aad: string): Buffer {
   if (sealed.aad !== aad) throw new Error(`sealed for "${sealed.aad}", expected "${aad}"`)
   const epkRaw = Buffer.from(sealed.epk, 'base64')
   const epk = createPublicKey({ key: Buffer.concat([SPKI_X25519, epkRaw]), format: 'der', type: 'spki' })
   const shared = diffieHellman({ privateKey: key.privateKey, publicKey: epk })
   const salt = Buffer.concat([epkRaw, Buffer.from(key.publicB64, 'base64')])
-  const aesKey = Buffer.from(hkdfSync('sha256', shared, salt, INFO, 32))
+  return Buffer.from(hkdfSync('sha256', shared, salt, INFO, 32))
+}
+
+/** Open a sealed message with its AES key (anyone can, once a reveal publishes the key). */
+export function openWithAesKey(sealed: Sealed, aesKey: Buffer): string {
   const ct = Buffer.from(sealed.ct, 'base64')
   const d = createDecipheriv('aes-256-gcm', aesKey, Buffer.from(sealed.nonce, 'base64'))
   d.setAAD(Buffer.from(sealed.aad))
@@ -34,33 +38,14 @@ export function openSealed(sealed: Sealed, key: SealKey, aad: string): string {
   return Buffer.concat([d.update(ct.subarray(0, -16)), d.final()]).toString('utf8')
 }
 
+/** Open a sealed payload; throws unless its AAD is exactly `aad` and it authenticates. */
+export function openSealed(sealed: Sealed, key: SealKey, aad: string): string {
+  return openWithAesKey(sealed, sealedAesKey(sealed, key, aad))
+}
+
 /** AAD of a member's sealed answer: bound to the community, the quest and the author. */
 export const answerAad = (community: string, quest: string, author: string) => `${community}/quest/${quest}/${author.toLowerCase()}`
 /** AAD of a quest's sealed solutions: bound to the community and the quest's author. */
 export const secretAad = (community: string, author: string) => `${community}/quest-secret/${author.toLowerCase()}`
 
-/**
- * Judge an opened answer against opened solutions. Text: trim + lower-case equality with
- * any solution. mcq: picks are de-duplicated; single-select needs exactly one correct
- * pick; multi-select needs the exact correct set, or with `partial` any non-empty set of
- * correct picks (multiplier = number of picks). Any wrong pick fails.
- */
-export function judge(
-  quest: { kind: string; options?: string[]; multi?: boolean; partial?: boolean },
-  secret: { solutions?: string[]; correct?: string[] },
-  answer: { text?: string; selected?: string[] },
-): { approved: boolean; multiplier?: number } {
-  if (quest.kind === 'text') {
-    const a = (answer.text ?? '').trim().toLowerCase()
-    return { approved: !!a && (secret.solutions ?? []).some((s) => s.trim().toLowerCase() === a) }
-  }
-  if (quest.kind === 'mcq') {
-    const picks = [...new Set(answer.selected ?? [])].filter((p) => quest.options?.includes(p))
-    const correct = new Set(secret.correct ?? [])
-    if (!picks.length || picks.some((p) => !correct.has(p))) return { approved: false }
-    if (!quest.multi) return { approved: picks.length === 1 }
-    if (quest.partial) return { approved: true, multiplier: picks.length }
-    return { approved: picks.length === correct.size }
-  }
-  return { approved: false }
-}
+export { judgeAnswer as judge } from '@freedom-community/protocol'

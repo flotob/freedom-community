@@ -10,7 +10,7 @@ import { Store, type StoreData } from './store.ts'
 import { communityView, dirtyFor, homeViews, memberView, membersView, postView, viewTopic, type ViewStamp } from './views.ts'
 import { sha256Hex } from '@freedom-community/protocol'
 import { audit } from './audit.ts'
-import { answerAad, judge, openSealed, secretAad, type SealKey } from './seal.ts'
+import { answerAad, judge, openSealed, sealedAesKey, secretAad, type SealKey } from './seal.ts'
 import { inboxView, leaderboardView, leaderboardsView, libraryView, librariesView, notificationsFor, questView, questsView, reviewView, type InboxItem } from './views.ts'
 import type { Verdict } from '@freedom-community/protocol'
 
@@ -368,6 +368,7 @@ export class Steward {
       for (const owner of owners.sort()) await this.ingest(owner)
       await this.flush()
       await this.retryPending()
+      await this.revealClosedQuests()
       this.lastTickAt = Date.now()
     } catch (e) {
       this.log('tick failed', String((e as Error)?.stack ?? e))
@@ -449,6 +450,47 @@ export class Steward {
     return { approved: false }
   }
 
+  /**
+   * When a quest with sealed solutions closes, publish `quest-reveal/<id>`: the solutions,
+   * and for every sealed answer its plaintext and the AES key that opens that one message
+   * (never the steward's key). Anyone can then decrypt each answer from the journal,
+   * re-judge it and compare with the verdict the ledger recorded.
+   */
+  private async revealClosedQuests(): Promise<void> {
+    if (!this.opts.sealKey || !this.state.quests) return
+    const now = Date.now()
+    for (const q of Object.values(this.state.quests)) {
+      if (!q.secret || this.data.revealed?.[q.id] || !(q.closed || (q.closesAt !== undefined && now >= q.closesAt))) continue
+      try {
+        const secretKey = sealedAesKey(q.secret, this.opts.sealKey, secretAad(this.community, q.author))
+        const secret = JSON.parse(openSealed(q.secret, this.opts.sealKey, secretAad(this.community, q.author)))
+        const answers = []
+        for (const sub of Object.values(this.state.submissions ?? {}).filter((x) => x.quest === q.id && x.answer.sealed)) {
+          const [owner, idx] = sub.id.split(':')
+          const entry = await this.swarm.readJournal(owner, this.journal, Number(idx))
+          const sealed = (entry?.json as { body?: { answer?: { sealed?: Parameters<typeof openSealed>[0] } } })?.body?.answer?.sealed
+          if (!sealed) continue
+          try {
+            const key = sealedAesKey(sealed, this.opts.sealKey, answerAad(this.community, q.id, owner))
+            answers.push({ submission: sub.id, author: owner, answer: JSON.parse(openSealed(sealed, this.opts.sealKey, answerAad(this.community, q.id, owner))), key: key.toString('base64'), status: sub.status })
+          } catch {
+            answers.push({ submission: sub.id, author: owner, answer: null, key: null, status: sub.status }) // unopenable (wrong AAD): it was judged wrong
+          }
+        }
+        const topic = viewTopic(this.community, `quest-reveal/${q.id}`)
+        const index = this.data.viewIndex[topic] ?? (await this.swarm.nextFeedIndex(topic))
+        this.data.views[`quest-reveal/${q.id}`] = await this.swarm.publishJson(topic, { v: 0, kind: 'quest-reveal', ...this.stamp(), quest: q.id, secret, secretKey: secretKey.toString('base64'), answers }, index)
+        this.data.viewIndex[topic] = index + 1
+        ;(this.data.revealed ??= {})[q.id] = true
+        this.dirty.add(`quest/${q.id}`)
+        this.save()
+        this.log(`quest ${q.id} closed: revealed its solutions and ${answers.length} sealed answers`)
+      } catch (e) {
+        this.log('reveal failed (will retry)', q.id, String(e))
+      }
+    }
+  }
+
   /** Solutions opened so far, per quest. */
   private secrets = new Map<string, { solutions?: string[]; correct?: string[] } | null>()
 
@@ -527,7 +569,7 @@ export class Steward {
       else if (name === 'review') docs.push({ name, doc: reviewView(s, stamp) })
       else if (name === 'leaderboards') docs.push({ name, doc: leaderboardsView(s, stamp) })
       else if (name.startsWith('leaderboard/')) { const doc = leaderboardView(s, name.slice(12), stamp); if (doc) docs.push({ name, doc }) }
-      else if (name.startsWith('quest/')) { const doc = questView(s, name.slice(6), stamp); if (doc) docs.push({ name, doc }) }
+      else if (name.startsWith('quest/')) { const doc = questView(s, name.slice(6), stamp, !!this.data.revealed?.[name.slice(6)]); if (doc) docs.push({ name, doc }) }
       else if (name === 'home') docs.push(...homeViews(s, stamp))
       else if (name === 'members') docs.push({ name, doc: membersView(s, stamp) })
       else if (name.startsWith('post/')) {

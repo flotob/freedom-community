@@ -144,7 +144,7 @@ export function questsView(s: State, stamp: ViewStamp) {
 }
 
 /** The quest page: the quest and its feed (answers only where both quest and row are public and nothing is sealed). */
-export function questView(s: State, id: string, stamp: ViewStamp) {
+export function questView(s: State, id: string, stamp: ViewStamp, revealed = false) {
   const q = s.quests?.[id]
   if (!q) return null
   const subs = Object.values(s.submissions ?? {}).filter((x) => x.quest === id && x.status !== 'disqualified').sort((a, b) => b.at - a.at)
@@ -152,7 +152,7 @@ export function questView(s: State, id: string, stamp: ViewStamp) {
     const open = (q.privacy ?? 'public') === 'public' && !x.private
     return { id: x.id, author: x.author, name: s.members[x.author]?.profile.name ?? null, avatar: s.members[x.author]?.profile.avatar ?? null, status: x.status, at: x.at, text: open ? x.answer.text ?? null : null, image: open ? x.answer.image ?? null : null }
   })
-  return { v: 0, kind: 'quest', ...stamp, quest: publicQuest(s, q), feed }
+  return { v: 0, kind: 'quest', ...stamp, quest: publicQuest(s, q), feed, revealed }
 }
 
 /** Submissions waiting for a reviewer, with their answers (journals are public anyway; sealed ones stay sealed). */

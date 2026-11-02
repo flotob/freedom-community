@@ -24,6 +24,8 @@ export interface StoreData {
   /** Notifications per member, newest last (published as inbox/<owner>). */
   inbox?: Record<string, { id: number; at: number; kind: string; actor: string | null; subject: string | null; target: unknown }[]>
   inboxSeq?: number
+  /** Quests whose sealed solutions and answers have been revealed (after closing). */
+  revealed?: Record<string, true>
 }
 
 /** What became of one journal entry: the app's "pending" resolves against these. */
