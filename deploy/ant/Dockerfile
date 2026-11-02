@@ -21,6 +21,8 @@ RUN apt-get update \
  && mkdir -p /home/ant/.antd \
  && chown ant:ant /home/ant/.antd
 COPY --from=fetch /usr/local/bin/antd /usr/local/bin/antd
+# Doorbell keeper (workaround for the GSOC lurker issue); run as a scheduled task, see keeper.sh.
+COPY --chmod=755 keeper.sh /usr/local/bin/ant-keeper
 USER ant
 WORKDIR /home/ant
 # Mount a persistent volume here: it holds the node key (signing.key), chequebook.json and the chunk cache.

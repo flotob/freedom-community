@@ -43,6 +43,19 @@ The node's wallet is the address of `signing.key`; get it from `GET /addresses` 
 - **xDAI** for gas: the chequebook deployment and postage transactions;
 - **xBZZ** for postage batches and the chequebook deposit.
 
+## Doorbell keeper (workaround)
+
+antd 0.5.77's GSOC subscriptions stop delivering some time after it starts. The steward
+notices because its own canary ring doesn't come back. The image ships `ant-keeper`, which
+reads the steward's status and, after repeated misses (and at least 15 min of uptime), sends
+antd SIGTERM. Docker's `unless-stopped` policy then restarts it in the same container, with the
+same address. Run it as a Coolify scheduled task on this app every 10 minutes (command
+`ant-keeper`). It logs to `~/.antd/keeper.log`. Settings: `KEEPER_STATUS` (default
+`davinci-steward:8080`), `KEEPER_MIN_MISSES` (2), `KEEPER_MIN_UPTIME_S` (900).
+
+For the steward to reach the node by name, give this app the network alias `davinci-ant`
+(Coolify: custom network aliases). The steward then uses `BEE_URL=http://davinci-ant:1633`.
+
 ## Upgrading
 
 1. Pick a release on <https://github.com/freedom-hq/ant/releases>.
