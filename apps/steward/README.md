@@ -21,6 +21,10 @@ docker run -e BEE_URL=… -e BATCH=… -e STEWARD_KEY=… -e GENESIS_JSON="$(cat
 # anyone can audit a community from Swarm alone
 BEE_URL=… STEWARD=0x… COMMUNITY=<id> node src/cli.ts audit
 
+# publish a built app at the community's stable origin (uploads DIR, points the app feed at it;
+# refuses to upload source maps)
+BEE_URL=… BATCH=… STEWARD_KEY_FILE=steward.key APP_TOPIC=freedom-community/v0/app/<name> DIR=dist node scripts/publish-app.ts
+
 # made-up demo members (journals written exactly like Freedom's swarm_writeFeedEntry)
 BEE_URL=… BATCH=<member batch> GENESIS=genesis.json KEYS=members.json OWNER_KEY_FILE=owner.key node scripts/seed.ts
 ```
