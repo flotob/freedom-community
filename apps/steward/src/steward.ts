@@ -25,6 +25,10 @@ export interface StewardOptions {
   sealKey?: SealKey
   /** How often to publish the `status` view (node and steward health); 0 disables it. */
   statusMs?: number
+  /** This process's name in the status view (the liveness lease); random if unset. */
+  instance?: string
+  /** Wait as a standby while another instance's status is younger than this (default 3 status intervals). */
+  takeoverMs?: number
 }
 
 export interface LedgerEntry { id: string; soc: string; receivedAt: number; ok: boolean; reason?: string; stateHash: string; verdict?: Verdict }
@@ -56,6 +60,9 @@ export class Steward {
   private lastCanary: { at: number; ms: number } | null = null
   private lastTickAt = 0
   private readonly startedAt = Date.now()
+  readonly instance: string
+  /** False while another instance holds the lease: nothing is written. */
+  private active = false
   /** No usable local state at startup: rebuild it from the ledger before doing anything. */
   private fresh: boolean
   /** Journal chunks read this session, so re-stamping needs no second fetch. */
@@ -74,6 +81,7 @@ export class Steward {
     this.journal = journalTopic(origin)
     this.ledgerTopic = stewardTopic(this.community, 'ledger')
     this.doorbell = doorbellTopic(this.community)
+    this.instance = opts.instance ?? randomBytes(4).toString('hex')
     this.store = new Store(opts.dataDir)
     const saved = this.store.load()
     if (saved && !saved.viewIndex) saved.viewIndex = {}
@@ -88,7 +96,32 @@ export class Steward {
 
   get state(): State { return this.data.state }
 
+  /**
+   * The status view doubles as a lease: the active steward republishes it every few
+   * minutes. Returns the other instance that holds it, if its status is fresh.
+   */
+  private async leaseHolder(): Promise<{ instance: string; ageMs: number; everyMs: number } | null> {
+    const doc = await this.swarm.readFeedJson<{ at?: number; writer?: { instance?: string; statusEveryMs?: number } }>(this.swarm.owner, viewTopic(this.community, 'status'))
+    const instance = doc?.writer?.instance
+    if (!doc?.at || !instance || instance === this.instance) return null
+    const everyMs = doc.writer?.statusEveryMs ?? 300_000
+    const ageMs = Date.now() - doc.at
+    return ageMs < (this.opts.takeoverMs ?? 3 * everyMs) ? { instance, ageMs, everyMs } : null
+  }
+
   async start(): Promise<void> {
+    // Another steward with this key is active: wait as a standby until its lease lapses.
+    for (let holder = await this.leaseHolder(); holder; holder = await this.leaseHolder()) {
+      this.log(`standby: instance ${holder.instance} is active (status ${Math.round(holder.ageMs / 1000)} s old); checking again in 60 s`)
+      await new Promise((r) => setTimeout(r, 60_000))
+    }
+    // The ledger may have moved on without us (another instance, or a crash before saving).
+    if (!this.fresh && (await this.swarm.readFeedPayload(this.swarm.owner, this.ledgerTopic, this.data.ledgerPage))) {
+      this.log(`the ledger is past our saved page ${this.data.ledgerPage}: replaying it instead of trusting the local state`)
+      this.fresh = true
+      this.data = { genesisRef: null, state: initialState(this.opts.genesis), cursors: {}, ledgerPage: 0, pendingAdopt: [], pendingRestamp: [], views: {}, viewIndex: {} }
+    }
+    this.active = true
     if (this.fresh) await this.recover()
     else if ((!this.data.receipts || !this.data.inbox) && this.data.genesisRef) await this.rebuildDerived()
     if ((this.data.viewFormat ?? 1) !== VIEW_FORMAT) {
@@ -205,6 +238,16 @@ export class Steward {
    * Nothing in it is secret: balances and batches are public on chain.
    */
   private async publishStatus(): Promise<void> {
+    if (!this.active) return
+    // Someone else published a status after ours: they hold the lease now; step down.
+    const holder = await this.leaseHolder().catch(() => null)
+    if (holder && holder.ageMs < (this.opts.statusMs ?? 300_000)) {
+      this.log(`instance ${holder.instance} published a newer status: stepping down to standby`)
+      this.active = false
+      this.stop()
+      void this.start()
+      return
+    }
     const get = async <T>(path: string): Promise<T | null> => {
       try {
         const r = await fetch(`${this.swarm.url}${path}`, { signal: AbortSignal.timeout(20_000) })
@@ -223,6 +266,7 @@ export class Steward {
     const doc = {
       v: 0, kind: 'status', ...this.stamp(), at: Date.now(),
       steward: { ...this.status(), startedAt: this.startedAt, uptimeS: Math.round((Date.now() - this.startedAt) / 1000) },
+      writer: { instance: this.instance, statusEveryMs: this.opts.statusMs ?? 300_000 },
       node: {
         version: health?.version ?? null,
         connected: topology?.connected ?? null, population: topology?.population ?? null, depth: topology?.depth ?? null,
@@ -261,7 +305,9 @@ export class Steward {
 
   stop(): void {
     for (const t of this.timers) clearInterval(t)
+    this.timers = []
     this.sub?.cancel()
+    this.sub = null
   }
 
   private subscribe(): void {
@@ -302,6 +348,7 @@ export class Steward {
 
   /** Read new journal entries for the queued owners (doorbell) or everyone (poll). */
   async tick(reason: string): Promise<void> {
+    if (!this.active) return
     if (this.busy) { if (reason !== 'poll') setTimeout(() => this.tick(reason), 500); return }
     this.busy = true
     try {

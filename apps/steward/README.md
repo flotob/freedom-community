@@ -50,6 +50,10 @@ Environment for `run`:
 | `CANARY_MS` | doorbell self-test interval (default 5 min) |
 | `STATUS_MS` | how often the `status` view is published (default 5 min; 0 turns it off) |
 | `STATUS_PORT` | optional: serve a JSON status over HTTP inside the container |
+| `STEWARD_INSTANCE` | this process's name in the status view (random if unset) |
+| `TAKEOVER_MS` | wait as a standby while another instance's status is younger than this (default: three of its status intervals) |
+
+**Standby and handover.** The `status` view doubles as a lease. A steward that finds another instance's fresh status waits as a standby, writing nothing. Once that status is older than the takeover window, it takes over. A steward whose saved ledger position is behind the ledger on Swarm replays the ledger before writing (another instance moved it on, or it crashed before saving). An active steward that sees a newer status from someone else steps down.
 
 The local state file is only a cache. When `DATA_DIR` is empty, the steward replays its own
 ledger from Swarm exactly as an auditor would. It starts only if that replay agrees with every

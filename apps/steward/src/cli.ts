@@ -23,7 +23,7 @@ if (cmd === 'run') {
   const genesis = JSON.parse(env.GENESIS_JSON ?? readFileSync(need('GENESIS'), 'utf8'))
   const steward = new Steward({
     swarm, genesis, dataDir: env.DATA_DIR ?? './steward-data', sealKey: sealKeyFrom(key),
-    pollMs: Number(env.POLL_MS ?? 30_000), canaryMs: Number(env.CANARY_MS ?? 300_000), statusMs: Number(env.STATUS_MS ?? 300_000),
+    pollMs: Number(env.POLL_MS ?? 30_000), canaryMs: Number(env.CANARY_MS ?? 300_000), statusMs: Number(env.STATUS_MS ?? 300_000), instance: env.STEWARD_INSTANCE, takeoverMs: env.TAKEOVER_MS ? Number(env.TAKEOVER_MS) : undefined,
   })
   process.on('SIGTERM', () => { steward.stop(); process.exit(0) })
   process.on('SIGINT', () => { steward.stop(); process.exit(0) })
@@ -34,7 +34,7 @@ if (cmd === 'run') {
     }).listen(Number(env.STATUS_PORT))
   }
   await steward.start()
-  steward.log(`running: community ${steward.community}, steward ${swarm.owner}, ledger ${steward.ledgerTopic}`)
+  steward.log(`running: community ${steward.community}, steward ${swarm.owner}, instance ${steward.instance}, ledger ${steward.ledgerTopic}`)
 } else if (cmd === 'audit') {
   const swarm = new Swarm(need('BEE_URL'), env.BATCH ?? '0'.repeat(64), randomBytes(32).toString('hex'))
   const r = await audit(swarm, need('STEWARD'), need('COMMUNITY'), (...a) => console.error(...a))
