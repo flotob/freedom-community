@@ -43,7 +43,7 @@ export async function audit(swarm: Swarm, steward: string, community: string, lo
       const entry = await swarm.readJournal(owner, journal, index)
       if (!entry) { report.mismatches.push({ id: e.id, problem: 'journal entry missing' }); continue }
       if (entry.soc !== e.soc) report.mismatches.push({ id: e.id, problem: 'SOC address differs' })
-      const r = reduce(state, entry.json, { author: owner, index, receivedAt: e.receivedAt })
+      const r = reduce(state, entry.json, { author: owner, index, receivedAt: e.receivedAt, verdict: e.verdict })
       state = r.state
       if (r.outcome.ok !== e.ok || (!r.outcome.ok && r.outcome.reason !== e.reason)) report.mismatches.push({ id: e.id, problem: `outcome differs: replay ${JSON.stringify(r.outcome)}` })
       if (stateHash(state) !== e.stateHash) report.mismatches.push({ id: e.id, problem: 'state hash differs' })

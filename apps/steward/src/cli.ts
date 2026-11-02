@@ -11,6 +11,7 @@ import { randomBytes } from 'node:crypto'
 import { Swarm } from './swarm.ts'
 import { Steward } from './steward.ts'
 import { audit } from './audit.ts'
+import { sealKeyFrom } from './seal.ts'
 
 const env = process.env
 const need = (k: string) => env[k] ?? (() => { throw new Error(`${k} is required`) })()
@@ -21,7 +22,7 @@ if (cmd === 'run') {
   const swarm = new Swarm(need('BEE_URL'), need('BATCH'), key)
   const genesis = JSON.parse(env.GENESIS_JSON ?? readFileSync(need('GENESIS'), 'utf8'))
   const steward = new Steward({
-    swarm, genesis, dataDir: env.DATA_DIR ?? './steward-data',
+    swarm, genesis, dataDir: env.DATA_DIR ?? './steward-data', sealKey: sealKeyFrom(key),
     pollMs: Number(env.POLL_MS ?? 30_000), canaryMs: Number(env.CANARY_MS ?? 300_000),
   })
   process.on('SIGTERM', () => { steward.stop(); process.exit(0) })

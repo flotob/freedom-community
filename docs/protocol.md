@@ -70,8 +70,45 @@ A journal entry is one action:
 | `mod.hide` | `mod.hide` | `{ target, reason }` |
 | `role.grant` / `role.revoke` | `role.manage` | `{ member, role }` |
 | `badge.grant` / `badge.revoke` | `badge.manage` | `{ member, badge }` |
-| `community.update` | `community.manage` | `{ name?, theme?, categories?, badges?, roles? }` |
-| `quest.submit` | `quest.play` | `{ quest, sealed }` (sealed answer, S5 format) |
+| `community.update` | `community.manage` | `{ name?, theme?, categories?, badges?, roles?, leaderboards? }` |
+| `badge.score` | `badge.score` | `{ member, badge, score }` (the member must hold the badge) |
+| `quest.create` | `quest.manage` | `{ title, description?, kind: text\|mcq\|upload, options?, multi?, partial?, secret?, autoApprove?, opensAt?, closesAt?, tries?, rewards?, prerequisites?, privacy?, image? }` |
+| `quest.update` | `quest.manage` | `{ quest, …any quest field, close? }` (kind is fixed once there are submissions) |
+| `quest.submit` | `quest.submit` | `{ quest, answer: {sealed} \| {text} \| {image}, private? }` |
+| `quest.review` | `quest.review` | `{ submission, decision: approved\|rejected\|disqualified }` |
+
+### Badges, scores, leaderboards
+
+A badge may carry a card decal (`settings`: davinci's `decal_text` and `decal_image`, an image being a Swarm ref; `{value}` in the text shows the member's score in that badge), a `visibility` for its icon, `default` (granted on every join from then on) and `enabled: false` (no new grants). A member's score per badge lives in `scores`. A leaderboard ranks one badge's holders: score descending, then joining order. Ranks are 1, 2, 3… with no ties.
+
+New fields are optional and **absent until used**, with no schema defaults, so ledgers written before they existed replay to the same state hashes.
+
+### Quests and sealed answers
+
+Members' journals are public, so a quest's solutions (text answers, or which mcq options are correct) and the members' answers to judged quests are **sealed to the steward**:
+- format: X25519 with an ephemeral key, HKDF-SHA256, AES-256-GCM (spike S5);
+- seal key: derived from the steward key and published as `sealKey` in the community view;
+- AAD of an answer: `<community>/quest/<quest id>/<author>`, so copying another member's ciphertext fails;
+- AAD of solutions: `<community>/quest-secret/<quest author>`.
+
+How a submission is judged:
+- `autoApprove` → approved.
+- A sealed answer to a quest with sealed solutions → the steward opens both and judges:
+  - text: trimmed lower-case equality with any solution;
+  - mcq: picks are de-duplicated; single-select needs one correct pick; multi-select needs the exact correct set;
+  - multi-select with `partial`: any non-empty set of correct picks passes, and the reward is multiplied by the number of picks.
+  
+  It passes the verdict to the reducer as `ctx.verdict = {approved, multiplier?}` and records it in the ledger entry (`verdict`), so a replay reaches the same state.
+- Everything else → `pending`, until a member with `quest.review` decides.
+
+Rewards land **once per submission** (`paid`):
+- a reward grants a badge (if enabled) and adds `score × multiplier`, or removes a badge;
+- a reviewer reversing an approval takes the score back (badges stay);
+- approving again pays again.
+
+Other rules: submissions need the quest open (`opensAt ≤ receivedAt < closesAt`, not `closed`), every prerequisite met (badge held, score within `min`/`max`), no pending or approved submission, not disqualified, and a try left (`tries`, default 1).
+
+**Trust:** verdicts on sealed answers are attested by the steward. An auditor checks that the replay follows them, but not that they are right. Planned: when a quest closes, the steward publishes its solutions and each submission's ECDH shared secret, so anyone can open every answer and re-judge.
 
 Content larger than an entry is uploaded by the member (`swarm_publishData`) and referenced with its SHA-256. Once the steward accepts it, it **adopts** the content: it re-stamps it on the community batch (`PUT /stewardship`) so it outlives the member's batch (S3).
 
@@ -79,7 +116,7 @@ Content larger than an entry is uploaded by the member (`swarm_publishData`) and
 
 `reduce(state, action, ctx) → { state, outcome }`
 
-- **Pure:** no I/O, no clock. `ctx = { author, index, receivedAt }`.
+- **Pure:** no I/O, no clock. `ctx = { author, index, receivedAt, verdict? }` (`verdict` only for sealed quest answers, taken from the ledger on replay).
 - **Outcome:** `{ ok: true, effects }` or `{ ok: false, reason }`. Effects are what the steward must do next, for example adopting a content reference.
 - **Rejected actions** are recorded with their reason, so members and auditors see why.
 - **State hash:** `keccak256` over the canonical JSON of the state, after each action.
@@ -109,7 +146,11 @@ The app reads pre-computed JSON documents. Each is a steward sequence feed (topi
 | `post/<action id>` | post plus comments and like count; the markdown `body` is embedded when the steward could read it and it matches `contentHash` |
 | `members` | member cards (one page for now) |
 | `member/<owner>` | profile, roles, badges, posts, and a journal receipt: `{next, recent: [{index, type, ok, reason?, at}]}` (how far the steward has read this author's journal, and their last 20 outcomes). It is also published for someone whose join was refused (`member: false`), so their app can say why. |
-| `leaderboard/<id>` | ranking |
+| `leaderboards` | every leaderboard with its top 5 |
+| `leaderboard/<id>` | the full ranking: `{rank, owner, name, avatar, score}` |
+| `quests` | every quest's public part (never `secret`; `hasSolutions` instead), with counts |
+| `quest/<id>` | the quest and its feed; answers only when both quest and submission are public and the answer isn't sealed; a `secret` quest shows no rows |
+| `review` | pending submissions with their (unsealed) answers, for reviewers |
 | `index` | `{views: {<view name>: <latest feed index>}}`, republished after every view update. A latest-entry lookup costs seconds in a light node (measured 0.8–3.4 s in Freedom), and an exact-index read costs a fraction of that, so apps read this once and then read views by index. |
 
 Views are a cache. The ledger and journals are the truth, and every view carries the ledger page and state hash it was built from.

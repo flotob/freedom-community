@@ -2,7 +2,7 @@
 // The steward, the app (optimistic updates) and auditors all run this same function.
 import { actionId, normalizeAddress } from './canonical.ts'
 import { parseAction, type Action } from './schemas.ts'
-import { addSorted, can, isOwnerRole, removeValue, type Comment, type Post, type State } from './state.ts'
+import { addSorted, can, isOwnerRole, removeValue, type Comment, type Post, type Quest, type State, type Submission } from './state.ts'
 
 export interface ReduceContext {
   /** The journal owner who signed the entry. */
@@ -11,7 +11,14 @@ export interface ReduceContext {
   index: number
   /** The steward's receive time (ms); orders actions and stamps state. */
   receivedAt: number
+  /**
+   * The steward's verdict on a sealed quest answer (it alone can open it), recorded in the
+   * ledger so a replay reaches the same state. Steward-attested: see docs/protocol.md.
+   */
+  verdict?: Verdict
 }
+
+export interface Verdict { approved: boolean; multiplier?: number }
 
 export type Effect = { kind: 'adopt'; ref: string }
 export type Outcome = { ok: true; id: string; effects: Effect[] } | { ok: false; id: string; reason: string }
@@ -28,12 +35,12 @@ export function reduce(state: State, entry: unknown, ctx: ReduceContext): { stat
   const action = parsed.action
   if (action.c !== state.community.id) return reject('wrong-community')
   const effects: Effect[] = []
-  const reason = apply(next, action, { author, id, at: ctx.receivedAt }, effects)
+  const reason = apply(next, action, { author, id, at: ctx.receivedAt, verdict: ctx.verdict }, effects)
   if (reason) return reject(reason)
   return { state: next, outcome: { ok: true, id, effects } }
 }
 
-type Ctx = { author: string; id: string; at: number }
+type Ctx = { author: string; id: string; at: number; verdict?: Verdict }
 
 // Returns a rejection reason, or null after mutating `s` in place (s is already a copy).
 function apply(s: State, a: Action, ctx: Ctx, effects: Effect[]): string | null {
@@ -41,7 +48,8 @@ function apply(s: State, a: Action, ctx: Ctx, effects: Effect[]): string | null 
   if (a.type === 'member.join') {
     if (me) return 'already-member'
     if (!s.community.public) return 'closed'
-    s.members[ctx.author] = { owner: ctx.author, joinedAt: ctx.at, roles: [...s.community.defaultRoles].sort(), badges: [], profile: a.body.profile ?? {} }
+    const defaults = s.community.badges.filter((b) => b.default && b.enabled !== false).map((b) => b.id).sort()
+    s.members[ctx.author] = { owner: ctx.author, joinedAt: ctx.at, roles: [...s.community.defaultRoles].sort(), badges: defaults, profile: a.body.profile ?? {} }
     if (a.body.profile?.avatar) effects.push({ kind: 'adopt', ref: a.body.profile.avatar })
     return null
   }
@@ -151,7 +159,94 @@ function apply(s: State, a: Action, ctx: Ctx, effects: Effect[]): string | null 
       if (!badge) return 'unknown-badge'
       // A badge carrying an all-powerful role is an owner grant in disguise.
       if (badge.roles.some((r) => isOwnerRole(s, r)) && !can(s, ctx.author, '*')) return 'not-permitted'
-      member.badges = a.type === 'badge.grant' ? addSorted(member.badges, badge.id) : removeValue(member.badges, badge.id)
+      if (a.type === 'badge.grant') {
+        if (badge.enabled === false) return 'badge-disabled'
+        member.badges = addSorted(member.badges, badge.id)
+      } else detachBadge(member, badge.id)
+      return null
+    }
+    case 'badge.score': {
+      const denied = need('badge.score')
+      if (denied) return denied
+      const member = s.members[a.body.member]
+      if (!member) return 'unknown-member'
+      if (!member.badges.includes(a.body.badge)) return 'not-held'
+      member.scores = { ...member.scores, [a.body.badge]: a.body.score }
+      return null
+    }
+    case 'quest.create': {
+      const denied = need('quest.manage')
+      if (denied) return denied
+      const bad = questProblem(s, a.body)
+      if (bad) return bad
+      const quest: Quest = { id: ctx.id, author: ctx.author, createdAt: ctx.at, ...stripUndefined(a.body) } as Quest
+      s.quests = { ...s.quests, [ctx.id]: quest }
+      if (quest.image) effects.push({ kind: 'adopt', ref: quest.image })
+      return null
+    }
+    case 'quest.update': {
+      const denied = need('quest.manage')
+      if (denied) return denied
+      const quest = s.quests?.[a.body.quest]
+      if (!quest) return 'unknown-target'
+      if (questClosed(quest, ctx.at)) return 'quest-closed'
+      const { quest: _q, close, ...fields } = a.body as Record<string, unknown> & { quest: string; close?: boolean }
+      const patch = stripUndefined(fields) as Partial<Quest>
+      if (patch.kind && patch.kind !== quest.kind && Object.values(s.submissions ?? {}).some((x) => x.quest === quest.id)) return 'kind-fixed'
+      const merged = { ...quest, ...patch }
+      const bad = questProblem(s, merged)
+      if (bad) return bad
+      if (close) merged.closed = true
+      s.quests![quest.id] = merged
+      if (patch.image) effects.push({ kind: 'adopt', ref: patch.image })
+      return null
+    }
+    case 'quest.submit': {
+      const denied = need('quest.submit')
+      if (denied) return denied
+      const quest = s.quests?.[a.body.quest]
+      if (!quest) return 'unknown-target'
+      if (quest.opensAt !== undefined && ctx.at < quest.opensAt) return 'quest-not-open'
+      if (questClosed(quest, ctx.at)) return 'quest-closed'
+      for (const p of quest.prerequisites ?? []) {
+        const score = me.scores?.[p.badge] ?? 0
+        if (!me.badges.includes(p.badge) || (p.min !== undefined && score < p.min) || (p.max !== undefined && score > p.max)) return 'prerequisite-unmet'
+      }
+      const mine = Object.values(s.submissions ?? {}).filter((x) => x.quest === quest.id && x.author === ctx.author)
+      if (mine.some((x) => x.status === 'disqualified')) return 'disqualified'
+      if (mine.some((x) => x.status === 'pending' || x.status === 'approved')) return 'already-submitted'
+      if (mine.length >= (quest.tries ?? 1)) return 'no-tries-left'
+      const answer = a.body.answer
+      if (quest.kind === 'upload' && !('image' in answer)) return 'answer-kind'
+      if (quest.kind !== 'upload' && 'image' in answer) return 'answer-kind'
+      const sub: Submission = {
+        id: ctx.id, quest: quest.id, author: ctx.author, at: ctx.at,
+        answer: 'sealed' in answer ? { sealed: true } : 'text' in answer ? { text: answer.text } : { image: answer.image },
+        status: 'pending',
+      }
+      if (a.body.private) sub.private = true
+      // Judging: auto-approve; a sealed answer to a quest with sealed solutions takes the
+      // steward's verdict; everything else waits for a reviewer.
+      if (quest.autoApprove) sub.status = 'approved'
+      else if (quest.secret && 'sealed' in answer && ctx.verdict) {
+        sub.status = ctx.verdict.approved ? 'approved' : 'rejected'
+        if (ctx.verdict.multiplier && ctx.verdict.multiplier > 1) sub.multiplier = Math.min(ctx.verdict.multiplier, 20)
+      }
+      s.submissions = { ...s.submissions, [ctx.id]: sub }
+      if (sub.status === 'approved') pay(s, sub, quest)
+      if ('image' in answer) effects.push({ kind: 'adopt', ref: answer.image })
+      return null
+    }
+    case 'quest.review': {
+      const denied = need('quest.review')
+      if (denied) return denied
+      const sub = s.submissions?.[a.body.submission]
+      if (!sub) return 'unknown-target'
+      const quest = s.quests![sub.quest]
+      if (sub.status === a.body.decision) return 'unchanged'
+      if (sub.paid) takeBack(s, sub, quest)
+      sub.status = a.body.decision
+      if (sub.status === 'approved') pay(s, sub, quest)
       return null
     }
     case 'community.update': {
@@ -164,9 +259,68 @@ function apply(s: State, a: Action, ctx: Ctx, effects: Effect[]): string | null 
       if (a.body.categories !== undefined) s.community.categories = a.body.categories
       if (a.body.badges !== undefined) s.community.badges = a.body.badges
       if (a.body.roles !== undefined) s.community.roles = a.body.roles
+      if (a.body.leaderboards !== undefined) {
+        const badges = a.body.badges ?? s.community.badges
+        if (a.body.leaderboards.some((l) => !badges.some((b) => b.id === l.badge))) return 'unknown-badge'
+        s.community.leaderboards = a.body.leaderboards
+      }
       return null
     }
   }
+}
+
+/** Rewards land once per submission: badges granted or removed, scores added (times the multiplier). */
+function pay(s: State, sub: Submission, quest: Quest): void {
+  const member = s.members[sub.author]
+  if (!member || sub.paid) return
+  const mult = sub.multiplier ?? 1
+  for (const r of quest.rewards ?? []) {
+    const badge = s.community.badges.find((b) => b.id === r.badge)
+    if (r.action === 'remove') {
+      detachBadge(member, r.badge)
+      continue
+    }
+    if (!badge || badge.enabled === false) continue
+    member.badges = addSorted(member.badges, badge.id)
+    if (r.score) member.scores = { ...member.scores, [badge.id]: (member.scores?.[badge.id] ?? 0) + r.score * mult }
+  }
+  sub.paid = true
+}
+
+/** A reviewer reversing an approval takes back the scores it paid (badges stay). */
+function takeBack(s: State, sub: Submission, quest: Quest): void {
+  const member = s.members[sub.author]
+  const mult = sub.multiplier ?? 1
+  for (const r of quest.rewards ?? []) {
+    if (r.action === 'remove' || !r.score || !member?.badges.includes(r.badge)) continue
+    member.scores = { ...member.scores, [r.badge]: (member.scores?.[r.badge] ?? 0) - r.score * mult }
+  }
+  delete sub.paid
+}
+
+function detachBadge(member: { badges: string[]; scores?: Record<string, number> }, badge: string): void {
+  member.badges = removeValue(member.badges, badge)
+  if (member.scores && badge in member.scores) {
+    const { [badge]: _gone, ...rest } = member.scores
+    member.scores = rest
+  }
+}
+
+function questClosed(q: Quest, at: number): boolean {
+  return !!q.closed || (q.closesAt !== undefined && at >= q.closesAt)
+}
+
+function questProblem(s: State, q: { kind: string; options?: string[]; closesAt?: number; opensAt?: number; rewards?: { badge: string }[]; prerequisites?: { badge: string; min?: number; max?: number }[] }): string | null {
+  if (q.kind === 'mcq' && (!q.options || q.options.length < 2)) return 'mcq-needs-options'
+  if (q.options && new Set(q.options.map((o) => o.trim().toLowerCase())).size !== q.options.length) return 'duplicate-options'
+  if (q.opensAt !== undefined && q.closesAt !== undefined && q.closesAt <= q.opensAt) return 'closes-before-opening'
+  for (const r of [...(q.rewards ?? []), ...(q.prerequisites ?? [])]) if (!s.community.badges.some((b) => b.id === r.badge)) return 'unknown-badge'
+  for (const p of q.prerequisites ?? []) if (p.min !== undefined && p.max !== undefined && p.min > p.max) return 'min-above-max'
+  return null
+}
+
+function stripUndefined<T extends Record<string, unknown>>(o: T): T {
+  return Object.fromEntries(Object.entries(o).filter(([, v]) => v !== undefined)) as T
 }
 
 function lastHolder(s: State, roleId: string, owner: string): boolean {

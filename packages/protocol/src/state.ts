@@ -1,7 +1,7 @@
 // Community state: what the reducer folds the ledger into. Plain JSON, deterministic
 // (sorted arrays, no Maps), so its canonical hash is the same for every replayer.
 import { communityId, normalizeAddress } from './canonical.ts'
-import { GenesisSchema, type Badge, type Category, type Genesis, type Role } from './schemas.ts'
+import { GenesisSchema, type Badge, type Category, type Genesis, type Leaderboard, type Role, type Sealed } from './schemas.ts'
 
 export interface Profile { name?: string; bio?: string; avatar?: string }
 
@@ -11,6 +11,45 @@ export interface Member {
   roles: string[]
   badges: string[]
   profile: Profile
+  /** Score per held badge; absent until a score is first set (keeps older state hashes). */
+  scores?: Record<string, number>
+}
+
+export interface Quest {
+  id: string
+  author: string
+  createdAt: number
+  title: string
+  description?: string
+  kind: 'text' | 'mcq' | 'upload'
+  options?: string[]
+  multi?: boolean
+  partial?: boolean
+  secret?: Sealed
+  autoApprove?: boolean
+  opensAt?: number
+  closesAt?: number
+  closed?: boolean
+  tries?: number
+  rewards?: { badge: string; score?: number; action?: 'add' | 'remove' }[]
+  prerequisites?: { badge: string; min?: number; max?: number; hide?: boolean }[]
+  privacy?: 'public' | 'private' | 'secret'
+  image?: string
+}
+
+export type SubmissionStatus = 'pending' | 'approved' | 'rejected' | 'disqualified'
+
+export interface Submission {
+  id: string
+  quest: string
+  author: string
+  at: number
+  answer: { text?: string; image?: string; sealed?: true }
+  private?: boolean
+  status: SubmissionStatus
+  /** Rewards were applied (each submission pays once). */
+  paid?: boolean
+  multiplier?: number
 }
 
 export type ItemStatus = 'published' | 'withdrawn' | 'hidden'
@@ -58,10 +97,14 @@ export interface State {
     categories: Category[]
     theme?: Record<string, string>
     public: boolean
+    leaderboards?: Leaderboard[]
   }
   members: Record<string, Member>
   posts: Record<string, Post>
   comments: Record<string, Comment>
+  /** Absent until the first quest (keeps the state hashes of older ledgers). */
+  quests?: Record<string, Quest>
+  submissions?: Record<string, Submission>
   /** Actions folded so far, accepted or not. */
   seq: number
 }

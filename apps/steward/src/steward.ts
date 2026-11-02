@@ -10,6 +10,9 @@ import { Store, type StoreData } from './store.ts'
 import { communityView, dirtyFor, homeViews, memberView, membersView, postView, viewTopic, type ViewStamp } from './views.ts'
 import { sha256Hex } from '@freedom-community/protocol'
 import { audit } from './audit.ts'
+import { answerAad, judge, openSealed, secretAad, type SealKey } from './seal.ts'
+import { leaderboardView, leaderboardsView, questView, questsView, reviewView } from './views.ts'
+import type { Verdict } from '@freedom-community/protocol'
 
 export interface StewardOptions {
   swarm: Swarm
@@ -18,13 +21,15 @@ export interface StewardOptions {
   pollMs?: number
   canaryMs?: number
   log?: (...a: unknown[]) => void
+  /** Opens sealed quest answers and solutions (derived from the steward key). */
+  sealKey?: SealKey
 }
 
-export interface LedgerEntry { id: string; soc: string; receivedAt: number; ok: boolean; reason?: string; stateHash: string }
+export interface LedgerEntry { id: string; soc: string; receivedAt: number; ok: boolean; reason?: string; stateHash: string; verdict?: Verdict }
 
 const PAGE_LIMIT = 3800 // bytes; a ledger page must fit one 4 KiB chunk
-/** 1: views as bzz files. 2: views as raw blobs, post bodies embedded. 3: member views carry journal receipts. 4: member cards carry a bio line. 5: the index view. */
-const VIEW_FORMAT = 5
+/** 1: views as bzz files. 2: views as raw blobs, post bodies embedded. 3: member views carry journal receipts. 4: member cards carry a bio line. 5: the index view. 6: seal key, quests, leaderboards. */
+const VIEW_FORMAT = 6
 const RECEIPTS_KEPT = 20
 /** Bodies larger than this stay out of views; the app reads them itself. */
 const MAX_BODY_BYTES = 256 * 1024
@@ -141,7 +146,11 @@ export class Steward {
   }
 
   private allViewsDirty(): void {
-    this.dirty.add('community').add('home').add('members')
+    this.dirty.add('community').add('home').add('members').add('leaderboards')
+    if (this.state.quests) {
+      this.dirty.add('quests').add('review')
+      for (const id of Object.keys(this.state.quests)) this.dirty.add(`quest/${id}`)
+    }
     for (const id of Object.keys(this.state.posts)) this.dirty.add(`post/${id}`)
     for (const id of Object.keys(this.state.members)) this.dirty.add(`member/${id}`)
   }
@@ -254,22 +263,55 @@ export class Steward {
 
   private apply(entry: JournalEntry): void {
     const receivedAt = Date.now()
-    const { state, outcome } = reduce(this.state, entry.json, { author: entry.owner, index: entry.index, receivedAt })
+    const verdict = this.verdictFor(entry)
+    const { state, outcome } = reduce(this.state, entry.json, { author: entry.owner, index: entry.index, receivedAt, verdict })
     this.data.state = state
     this.data.cursors[entry.owner] = entry.index + 1
     this.receipt(entry.owner, { index: entry.index, type: String((entry.json as { type?: string })?.type ?? '?'), ok: outcome.ok, reason: outcome.ok ? undefined : outcome.reason, at: receivedAt })
     const hash = stateHash(state)
     this.pending.push(outcome.ok
-      ? { id: outcome.id, soc: entry.soc, receivedAt, ok: true, stateHash: hash }
+      ? { id: outcome.id, soc: entry.soc, receivedAt, ok: true, stateHash: hash, ...(verdict ? { verdict } : {}) }
       : { id: outcome.id, soc: entry.soc, receivedAt, ok: false, reason: outcome.reason, stateHash: hash })
     this.data.pendingRestamp.push({ owner: entry.owner, index: entry.index })
     this.raw.set(`${entry.owner}:${entry.index}`, entry)
     if (outcome.ok) {
       for (const e of outcome.effects) this.data.pendingAdopt.push(e.ref)
       const j = entry.json as { type: string; body?: Record<string, unknown> }
-      for (const v of dirtyFor(j.type, entry.owner, j.body ?? {}, outcome.id)) this.dirty.add(v)
+      for (const v of dirtyFor(j.type, entry.owner, j.body ?? {}, outcome.id, state)) this.dirty.add(v)
     }
     this.log(outcome.ok ? 'accepted' : `rejected (${outcome.reason})`, outcome.id, (entry.json as { type?: string })?.type)
+  }
+
+  /** Solutions opened so far, per quest. */
+  private secrets = new Map<string, { solutions?: string[]; correct?: string[] } | null>()
+
+  /**
+   * The verdict on a sealed answer, if this is one and the steward can judge it. Nothing
+   * here is trusted by the reducer beyond approve/reject; a replay takes it from the ledger.
+   */
+  private verdictFor(entry: JournalEntry): Verdict | undefined {
+    const j = entry.json as { type?: string; body?: { quest?: string; answer?: { sealed?: unknown } } }
+    if (j?.type !== 'quest.submit' || !j.body?.answer?.sealed || !this.opts.sealKey || typeof j.body.quest !== 'string') return undefined
+    const quest = this.state.quests?.[j.body.quest]
+    if (!quest?.secret) return undefined
+    try {
+      if (!this.secrets.has(quest.id)) {
+        try {
+          this.secrets.set(quest.id, JSON.parse(openSealed(quest.secret, this.opts.sealKey, secretAad(this.community, quest.author))))
+        } catch (e) {
+          this.log('quest secret unreadable', quest.id, String(e))
+          this.secrets.set(quest.id, null)
+        }
+      }
+      const secret = this.secrets.get(quest.id)
+      if (!secret) return undefined // reviewers decide
+      const opened = JSON.parse(openSealed(j.body.answer.sealed as never, this.opts.sealKey, answerAad(this.community, quest.id, entry.owner)))
+      return judge(quest, secret, opened)
+    } catch (e) {
+      // an answer sealed for someone else's submission, or garbage: a wrong answer
+      this.log('sealed answer rejected', `${entry.owner}:${entry.index}`, String((e as Error).message ?? e))
+      return { approved: false }
+    }
   }
 
   /** Write pending ledger entries as pages, then republish dirty views, then save. */
@@ -301,12 +343,20 @@ export class Steward {
       if (d.startsWith('post/')) {
         const id = d.slice(5)
         names.add(`post/${s.comments[id]?.post ?? id}`)
+      } else if (d === 'leaderboards') {
+        names.add('leaderboards')
+        for (const l of s.community.leaderboards ?? []) names.add(`leaderboard/${l.id}`)
       } else names.add(d)
     }
     this.dirty.clear()
     const docs: { name: string; doc: unknown }[] = []
     for (const name of names) {
-      if (name === 'community') docs.push({ name, doc: communityView(s, stamp) })
+      if (name === 'community') docs.push({ name, doc: { ...communityView(s, stamp), sealKey: this.opts.sealKey?.publicB64 ?? null } })
+      else if (name === 'quests') docs.push({ name, doc: questsView(s, stamp) })
+      else if (name === 'review') docs.push({ name, doc: reviewView(s, stamp) })
+      else if (name === 'leaderboards') docs.push({ name, doc: leaderboardsView(s, stamp) })
+      else if (name.startsWith('leaderboard/')) { const doc = leaderboardView(s, name.slice(12), stamp); if (doc) docs.push({ name, doc }) }
+      else if (name.startsWith('quest/')) { const doc = questView(s, name.slice(6), stamp); if (doc) docs.push({ name, doc }) }
       else if (name === 'home') docs.push(...homeViews(s, stamp))
       else if (name === 'members') docs.push({ name, doc: membersView(s, stamp) })
       else if (name.startsWith('post/')) {
