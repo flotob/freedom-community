@@ -81,6 +81,7 @@ export class Steward {
 
   async start(): Promise<void> {
     if (this.fresh) await this.recover()
+    else if (!this.data.receipts && this.data.genesisRef) await this.rebuildReceipts()
     if ((this.data.viewFormat ?? 1) !== VIEW_FORMAT) {
       if (this.data.genesisRef) this.log(`view format ${this.data.viewFormat ?? 1} -> ${VIEW_FORMAT}: republishing every view`)
       this.allViewsDirty()
@@ -120,6 +121,16 @@ export class Steward {
     this.fresh = false
     this.save()
     this.log(`recovered: ${r.pages} ledger pages, ${r.entries} entries, state ${r.finalStateHash}`)
+  }
+
+  /** A state saved before receipts existed: take them from a ledger replay. */
+  private async rebuildReceipts(): Promise<void> {
+    const r = await audit(this.swarm, this.swarm.owner, this.community)
+    if (r.mismatches.length) throw new Error(`ledger replay disagrees with the ledger (${JSON.stringify(r.mismatches.slice(0, 3))}); not starting`)
+    this.data.receipts = {}
+    for (const e of r.log) this.receipt(e.owner, { index: e.index, type: e.type, ok: e.ok, reason: e.reason, at: e.receivedAt })
+    this.save()
+    this.log(`receipts rebuilt from ${r.entries} ledger entries`)
   }
 
   /** Remember an outcome for the author's member view (their app resolves "pending" with it). */
