@@ -23,8 +23,8 @@ export interface StewardOptions {
 export interface LedgerEntry { id: string; soc: string; receivedAt: number; ok: boolean; reason?: string; stateHash: string }
 
 const PAGE_LIMIT = 3800 // bytes; a ledger page must fit one 4 KiB chunk
-/** 1: views as bzz files. 2: views as raw blobs, post bodies embedded. 3: member views carry journal receipts. 4: member cards carry a bio line. */
-const VIEW_FORMAT = 4
+/** 1: views as bzz files. 2: views as raw blobs, post bodies embedded. 3: member views carry journal receipts. 4: member cards carry a bio line. 5: the index view. */
+const VIEW_FORMAT = 5
 const RECEIPTS_KEPT = 20
 /** Bodies larger than this stay out of views; the app reads them itself. */
 const MAX_BODY_BYTES = 256 * 1024
@@ -329,6 +329,24 @@ export class Steward {
       this.data.viewIndex[topic] = index + 1
     }))
     this.log(`views published: ${docs.map((d) => d.name).join(', ')}`)
+    if (docs.length) await this.publishIndex(stamp)
+  }
+
+  /**
+   * The `index` view: every view's latest feed index. A latest-entry lookup costs seconds
+   * in a light node, an exact-index read a fraction of that, so the app reads this once and
+   * then reads the other views by index.
+   */
+  private async publishIndex(stamp: ViewStamp): Promise<void> {
+    const views: Record<string, number> = {}
+    for (const name of Object.keys(this.data.views)) {
+      const next = this.data.viewIndex[viewTopic(this.community, name)]
+      if (next !== undefined) views[name] = next - 1
+    }
+    const topic = viewTopic(this.community, 'index')
+    const index = this.data.viewIndex[topic] ?? (await this.swarm.nextFeedIndex(topic))
+    await this.swarm.publishJson(topic, { v: 0, kind: 'index', ...stamp, views }, index)
+    this.data.viewIndex[topic] = index + 1
   }
 
   private async retryPending(): Promise<void> {

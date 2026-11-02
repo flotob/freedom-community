@@ -110,6 +110,7 @@ The app reads pre-computed JSON documents. Each is a steward sequence feed (topi
 | `members` | member cards (one page for now) |
 | `member/<owner>` | profile, roles, badges, posts, and a journal receipt: `{next, recent: [{index, type, ok, reason?, at}]}` (how far the steward has read this author's journal, and their last 20 outcomes). It is also published for someone whose join was refused (`member: false`), so their app can say why. |
 | `leaderboard/<id>` | ranking |
+| `index` | `{views: {<view name>: <latest feed index>}}`, republished after every view update. A latest-entry lookup costs seconds in a light node (measured 0.8–3.4 s in Freedom), and an exact-index read costs a fraction of that, so apps read this once and then read views by index. |
 
 Views are a cache. The ledger and journals are the truth, and every view carries the ledger page and state hash it was built from.
 
