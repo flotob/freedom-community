@@ -79,11 +79,18 @@ export function membersView(s: State, stamp: ViewStamp) {
   }
 }
 
-export function memberView(s: State, owner: string, stamp: ViewStamp) {
+/** How far the steward has read a member's journal, and what became of their recent entries. */
+export interface JournalReceipt { next: number; recent: { index: number; type: string; ok: boolean; reason?: string; at: number }[] }
+
+export function memberView(s: State, owner: string, stamp: ViewStamp, journal?: JournalReceipt) {
   const m = s.members[owner]
-  if (!m) return null
+  // Someone whose join was refused still gets a view, so their app can say why.
+  if (!m) return journal ? { v: 0, kind: 'member', ...stamp, owner, member: false, journal } : null
   const posts = Object.values(s.posts).filter((p) => p.author === owner && visible(p)).sort((a, b) => b.createdAt - a.createdAt)
-  return { v: 0, kind: 'member', ...stamp, owner, profile: m.profile, roles: m.roles, effectiveRoles: effectiveRoles(s, owner), badges: m.badges, joinedAt: m.joinedAt, posts: posts.map((p) => postCard(s, p)) }
+  return {
+    v: 0, kind: 'member', ...stamp, owner, member: true, profile: m.profile, roles: m.roles, effectiveRoles: effectiveRoles(s, owner), badges: m.badges, joinedAt: m.joinedAt,
+    posts: posts.map((p) => postCard(s, p)), journal: journal ?? null,
+  }
 }
 
 /** Which views an accepted action touches (by its type and target). */

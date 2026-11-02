@@ -19,7 +19,12 @@ export interface StoreData {
   viewIndex: Record<string, number>
   /** Shape of the published views; a steward with a newer shape republishes them all. */
   viewFormat?: number
+  /** Recent outcomes per journal author, newest last (published in member views). */
+  receipts?: Record<string, Receipt[]>
 }
+
+/** What became of one journal entry: the app's "pending" resolves against these. */
+export interface Receipt { index: number; type: string; ok: boolean; reason?: string; at: number }
 
 export class Store {
   readonly path: string

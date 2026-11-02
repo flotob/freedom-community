@@ -15,11 +15,13 @@ export interface AuditReport {
   state: State | null
   /** Next journal index per author, as the steward tracks it. */
   cursors: Record<string, number>
+  /** Every replayed entry in ledger order. */
+  log: { owner: string; index: number; type: string; ok: boolean; reason?: string; receivedAt: number }[]
 }
 
 export async function audit(swarm: Swarm, steward: string, community: string, log = (..._a: unknown[]) => {}): Promise<AuditReport> {
   const ledgerTopic = stewardTopic(community, 'ledger')
-  const report: AuditReport = { community, pages: 0, entries: 0, accepted: 0, rejected: 0, mismatches: [], finalStateHash: null, state: null, cursors: {} }
+  const report: AuditReport = { community, pages: 0, entries: 0, accepted: 0, rejected: 0, mismatches: [], finalStateHash: null, state: null, cursors: {}, log: [] }
   const first = await swarm.readFeedPayload(steward, ledgerTopic, 0)
   if (!first) throw new Error('no ledger page 0')
   const page0 = JSON.parse(new TextDecoder().decode(first)) as { genesis: string }
@@ -45,6 +47,7 @@ export async function audit(swarm: Swarm, steward: string, community: string, lo
       state = r.state
       if (r.outcome.ok !== e.ok || (!r.outcome.ok && r.outcome.reason !== e.reason)) report.mismatches.push({ id: e.id, problem: `outcome differs: replay ${JSON.stringify(r.outcome)}` })
       if (stateHash(state) !== e.stateHash) report.mismatches.push({ id: e.id, problem: 'state hash differs' })
+      report.log.push({ owner, index, type: String((entry.json as { type?: string })?.type ?? '?'), ok: e.ok, reason: e.reason, receivedAt: e.receivedAt })
       if (r.outcome.ok) report.accepted += 1
       else report.rejected += 1
     }

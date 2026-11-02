@@ -37,7 +37,7 @@ if (cmd === 'run') {
 } else if (cmd === 'audit') {
   const swarm = new Swarm(need('BEE_URL'), env.BATCH ?? '0'.repeat(64), randomBytes(32).toString('hex'))
   const r = await audit(swarm, need('STEWARD'), need('COMMUNITY'), (...a) => console.error(...a))
-  const { state, ...summary } = r
+  const { state, log: _log, cursors: _cursors, ...summary } = r
   console.log(JSON.stringify({ ...summary, members: state ? Object.keys(state.members).length : 0, posts: state ? Object.keys(state.posts).length : 0 }, null, 2))
   process.exit(r.mismatches.length ? 1 : 0)
 } else {

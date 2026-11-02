@@ -108,7 +108,7 @@ The app reads pre-computed JSON documents. Each is a steward sequence feed (topi
 | `home/<page>` | post cards, newest first, 20 per page |
 | `post/<action id>` | post plus comments and like count; the markdown `body` is embedded when the steward could read it and it matches `contentHash` |
 | `members` | member cards (one page for now) |
-| `member/<owner>` | profile, roles, badges, posts |
+| `member/<owner>` | profile, roles, badges, posts, and a journal receipt: `{next, recent: [{index, type, ok, reason?, at}]}` (how far the steward has read this author's journal, and their last 20 outcomes). It is also published for someone whose join was refused (`member: false`), so their app can say why. |
 | `leaderboard/<id>` | ranking |
 
 Views are a cache. The ledger and journals are the truth, and every view carries the ledger page and state hash it was built from.

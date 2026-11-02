@@ -23,8 +23,9 @@ export interface StewardOptions {
 export interface LedgerEntry { id: string; soc: string; receivedAt: number; ok: boolean; reason?: string; stateHash: string }
 
 const PAGE_LIMIT = 3800 // bytes; a ledger page must fit one 4 KiB chunk
-/** 1: views as bzz files. 2: views as raw blobs, post bodies embedded. */
-const VIEW_FORMAT = 2
+/** 1: views as bzz files. 2: views as raw blobs, post bodies embedded. 3: member views carry journal receipts. */
+const VIEW_FORMAT = 3
+const RECEIPTS_KEPT = 20
 /** Bodies larger than this stay out of views; the app reads them itself. */
 const MAX_BODY_BYTES = 256 * 1024
 
@@ -112,11 +113,20 @@ export class Steward {
     this.data.state = r.state
     this.data.ledgerPage = r.pages
     this.data.cursors = r.cursors
+    this.data.receipts = {}
+    for (const e of r.log) this.receipt(e.owner, { index: e.index, type: e.type, ok: e.ok, reason: e.reason, at: e.receivedAt })
     // Views may lag the ledger if the previous run died between the two: rebuild them all.
     this.allViewsDirty()
     this.fresh = false
     this.save()
     this.log(`recovered: ${r.pages} ledger pages, ${r.entries} entries, state ${r.finalStateHash}`)
+  }
+
+  /** Remember an outcome for the author's member view (their app resolves "pending" with it). */
+  private receipt(owner: string, r: { index: number; type: string; ok: boolean; reason?: string; at: number }): void {
+    const all = (this.data.receipts ??= {})
+    all[owner] = [...(all[owner] ?? []), r].slice(-RECEIPTS_KEPT)
+    this.dirty.add(`member/${owner}`)
   }
 
   private allViewsDirty(): void {
@@ -234,6 +244,7 @@ export class Steward {
     const { state, outcome } = reduce(this.state, entry.json, { author: entry.owner, index: entry.index, receivedAt })
     this.data.state = state
     this.data.cursors[entry.owner] = entry.index + 1
+    this.receipt(entry.owner, { index: entry.index, type: String((entry.json as { type?: string })?.type ?? '?'), ok: outcome.ok, reason: outcome.ok ? undefined : outcome.reason, at: receivedAt })
     const hash = stateHash(state)
     this.pending.push(outcome.ok
       ? { id: outcome.id, soc: entry.soc, receivedAt, ok: true, stateHash: hash }
@@ -291,7 +302,12 @@ export class Steward {
         const doc = postView(s, name.slice(5), stamp, (ref) => (ref ? this.bodies.get(ref) ?? null : null))
         if (doc) docs.push({ name, doc })
       }
-      else if (name.startsWith('member/')) { const doc = memberView(s, name.slice(7), stamp); if (doc) docs.push({ name, doc }) }
+      else if (name.startsWith('member/')) {
+        const owner = name.slice(7)
+        const recent = this.data.receipts?.[owner]
+        const doc = memberView(s, owner, stamp, recent ? { next: this.data.cursors[owner] ?? 0, recent } : undefined)
+        if (doc) docs.push({ name, doc })
+      }
     }
     await Promise.all(docs.map(async ({ name, doc }) => {
       const topic = viewTopic(this.community, name)
