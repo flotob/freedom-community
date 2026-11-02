@@ -13,6 +13,8 @@ export interface Member {
   profile: Profile
   /** Score per held badge; absent until a score is first set (keeps older state hashes). */
   scores?: Record<string, number>
+  /** Members this member follows (sorted); absent until the first follow. */
+  follows?: string[]
 }
 
 export interface Quest {

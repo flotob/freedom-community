@@ -185,3 +185,15 @@ test('libraries: managers create them, permitted members post into them', () => 
   j.act(OWNER, 'library.update', { library: lib, archived: true })
   assert.equal(j.act(OWNER, 'post.create', body).reason, 'unknown-target')
 })
+
+test('follows: any member may follow another, not themselves', () => {
+  const j = new Journal()
+  for (const m of [ALICE, BOB]) j.act(m, 'member.join')
+  assert.equal(j.state.members[ALICE].follows, undefined)
+  assert.equal(j.act(ALICE, 'follow.set', { member: BOB, on: true }).ok, true)
+  assert.deepEqual(j.state.members[ALICE].follows, [BOB])
+  assert.equal(j.act(ALICE, 'follow.set', { member: ALICE, on: true }).reason, 'self')
+  assert.equal(j.act(ALICE, 'follow.set', { member: '0x' + '9'.repeat(40), on: true }).reason, 'unknown-member')
+  j.act(ALICE, 'follow.set', { member: BOB, on: false })
+  assert.deepEqual(j.state.members[ALICE].follows, [])
+})

@@ -19,7 +19,10 @@ export interface AuditReport {
   log: { owner: string; index: number; type: string; ok: boolean; reason?: string; receivedAt: number }[]
 }
 
-export async function audit(swarm: Swarm, steward: string, community: string, log = (..._a: unknown[]) => {}): Promise<AuditReport> {
+/** Called for every replayed entry with the state before and after it (for derived data such as inboxes). */
+export type ReplayHook = (prev: State, next: State, action: unknown, ctx: { author: string; id: string; at: number; ok: boolean }) => void
+
+export async function audit(swarm: Swarm, steward: string, community: string, log = (..._a: unknown[]) => {}, onEntry?: ReplayHook): Promise<AuditReport> {
   const ledgerTopic = stewardTopic(community, 'ledger')
   const report: AuditReport = { community, pages: 0, entries: 0, accepted: 0, rejected: 0, mismatches: [], finalStateHash: null, state: null, cursors: {}, log: [] }
   const first = await swarm.readFeedPayload(steward, ledgerTopic, 0)
@@ -44,6 +47,7 @@ export async function audit(swarm: Swarm, steward: string, community: string, lo
       if (!entry) { report.mismatches.push({ id: e.id, problem: 'journal entry missing' }); continue }
       if (entry.soc !== e.soc) report.mismatches.push({ id: e.id, problem: 'SOC address differs' })
       const r = reduce(state, entry.json, { author: owner, index, receivedAt: e.receivedAt, verdict: e.verdict })
+      onEntry?.(state, r.state, entry.json, { author: owner, id: e.id, at: e.receivedAt, ok: r.outcome.ok })
       state = r.state
       if (r.outcome.ok !== e.ok || (!r.outcome.ok && r.outcome.reason !== e.reason)) report.mismatches.push({ id: e.id, problem: `outcome differs: replay ${JSON.stringify(r.outcome)}` })
       if (stateHash(state) !== e.stateHash) report.mismatches.push({ id: e.id, problem: 'state hash differs' })

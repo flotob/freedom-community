@@ -182,6 +182,13 @@ function apply(s: State, a: Action, ctx: Ctx, effects: Effect[]): string | null 
       } else detachBadge(member, badge.id)
       return null
     }
+    case 'follow.set': {
+      const target = s.members[a.body.member]
+      if (!target) return 'unknown-member'
+      if (target.owner === ctx.author) return 'self'
+      me.follows = a.body.on ? addSorted(me.follows ?? [], target.owner) : removeValue(me.follows ?? [], target.owner)
+      return null
+    }
     case 'library.create': {
       const denied = need('library.manage')
       if (denied) return denied

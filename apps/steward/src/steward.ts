@@ -11,7 +11,7 @@ import { communityView, dirtyFor, homeViews, memberView, membersView, postView, 
 import { sha256Hex } from '@freedom-community/protocol'
 import { audit } from './audit.ts'
 import { answerAad, judge, openSealed, secretAad, type SealKey } from './seal.ts'
-import { leaderboardView, leaderboardsView, libraryView, librariesView, questView, questsView, reviewView } from './views.ts'
+import { inboxView, leaderboardView, leaderboardsView, libraryView, librariesView, notificationsFor, questView, questsView, reviewView, type InboxItem } from './views.ts'
 import type { Verdict } from '@freedom-community/protocol'
 
 export interface StewardOptions {
@@ -30,9 +30,10 @@ export interface StewardOptions {
 export interface LedgerEntry { id: string; soc: string; receivedAt: number; ok: boolean; reason?: string; stateHash: string; verdict?: Verdict }
 
 const PAGE_LIMIT = 3800 // bytes; a ledger page must fit one 4 KiB chunk
-/** 1: views as bzz files. 2: views as raw blobs, post bodies embedded. 3: member views carry journal receipts. 4: member cards carry a bio line. 5: the index view. 6: seal key, quests, leaderboards. 7: community view lists leaderboards. 8: genesis view. 9: comments carry parent and avatar. 10: libraries. */
-const VIEW_FORMAT = 10
+/** 1: views as bzz files. 2: views as raw blobs, post bodies embedded. 3: member views carry journal receipts. 4: member cards carry a bio line. 5: the index view. 6: seal key, quests, leaderboards. 7: community view lists leaderboards. 8: genesis view. 9: comments carry parent and avatar. 10: libraries. 11: follows, inboxes. */
+const VIEW_FORMAT = 11
 const RECEIPTS_KEPT = 20
+const INBOX_KEPT = 50
 /** Bodies larger than this stay out of views; the app reads them itself. */
 const MAX_BODY_BYTES = 256 * 1024
 
@@ -89,7 +90,7 @@ export class Steward {
 
   async start(): Promise<void> {
     if (this.fresh) await this.recover()
-    else if (!this.data.receipts && this.data.genesisRef) await this.rebuildReceipts()
+    else if ((!this.data.receipts || !this.data.inbox) && this.data.genesisRef) await this.rebuildDerived()
     if ((this.data.viewFormat ?? 1) !== VIEW_FORMAT) {
       if (this.data.genesisRef) this.log(`view format ${this.data.viewFormat ?? 1} -> ${VIEW_FORMAT}: republishing every view`)
       this.allViewsDirty()
@@ -120,7 +121,9 @@ export class Steward {
     const first = await this.swarm.readFeedPayload(this.swarm.owner, this.ledgerTopic, 0)
     if (!first) return // a new community
     this.log('no local state: replaying our ledger from Swarm')
-    const r = await audit(this.swarm, this.swarm.owner, this.community, (...a) => this.log(...a))
+    this.data.inbox = {}
+    this.data.inboxSeq = 0
+    const r = await audit(this.swarm, this.swarm.owner, this.community, (...a) => this.log(...a), (prev, next, action, c) => { if (c.ok) this.notify(prev, next, action, c.author, c.id, c.at) })
     if (r.mismatches.length || !r.state) throw new Error(`ledger replay disagrees with the ledger (${JSON.stringify(r.mismatches.slice(0, 3))}); not starting`)
     this.data.genesisRef = (JSON.parse(new TextDecoder().decode(first)) as { genesis: string }).genesis
     this.data.state = r.state
@@ -135,14 +138,28 @@ export class Steward {
     this.log(`recovered: ${r.pages} ledger pages, ${r.entries} entries, state ${r.finalStateHash}`)
   }
 
-  /** A state saved before receipts existed: take them from a ledger replay. */
-  private async rebuildReceipts(): Promise<void> {
-    const r = await audit(this.swarm, this.swarm.owner, this.community)
+  /** A state saved before receipts or inboxes existed: take them from a ledger replay. */
+  private async rebuildDerived(): Promise<void> {
+    this.data.inbox = {}
+    this.data.inboxSeq = 0
+    const r = await audit(this.swarm, this.swarm.owner, this.community, () => {}, (prev, next, action, c) => { if (c.ok) this.notify(prev, next, action, c.author, c.id, c.at) })
     if (r.mismatches.length) throw new Error(`ledger replay disagrees with the ledger (${JSON.stringify(r.mismatches.slice(0, 3))}); not starting`)
     this.data.receipts = {}
     for (const e of r.log) this.receipt(e.owner, { index: e.index, type: e.type, ok: e.ok, reason: e.reason, at: e.receivedAt })
+    for (const owner of Object.keys(this.data.inbox)) this.dirty.add(`inbox/${owner}`)
     this.save()
-    this.log(`receipts rebuilt from ${r.entries} ledger entries`)
+    this.log(`receipts and inboxes rebuilt from ${r.entries} ledger entries`)
+  }
+
+  /** Append the notifications an accepted action causes to their recipients' inboxes. */
+  private notify(prev: State, next: State, action: unknown, author: string, id: string, at: number): void {
+    for (const n of notificationsFor(prev, next, action, { author, id })) {
+      const { to, ...rest } = n
+      const box = ((this.data.inbox ??= {})[to] ??= [])
+      box.push({ id: (this.data.inboxSeq = (this.data.inboxSeq ?? 0) + 1), at, ...rest })
+      if (box.length > INBOX_KEPT) box.splice(0, box.length - INBOX_KEPT)
+      this.dirty.add(`inbox/${to}`)
+    }
   }
 
   /** Remember an outcome for the author's member view (their app resolves "pending" with it). */
@@ -318,6 +335,7 @@ export class Steward {
   private apply(entry: JournalEntry): void {
     const receivedAt = Date.now()
     const verdict = this.verdictFor(entry)
+    const prev = this.state
     const { state, outcome } = reduce(this.state, entry.json, { author: entry.owner, index: entry.index, receivedAt, verdict })
     this.data.state = state
     this.data.cursors[entry.owner] = entry.index + 1
@@ -332,6 +350,7 @@ export class Steward {
       for (const e of outcome.effects) this.data.pendingAdopt.push(e.ref)
       const j = entry.json as { type: string; body?: Record<string, unknown> }
       for (const v of dirtyFor(j.type, entry.owner, j.body ?? {}, outcome.id, state)) this.dirty.add(v)
+      this.notify(prev, state, entry.json, entry.owner, outcome.id, receivedAt)
     }
     this.log(outcome.ok ? 'accepted' : `rejected (${outcome.reason})`, outcome.id, (entry.json as { type?: string })?.type)
   }
@@ -409,6 +428,7 @@ export class Steward {
       else if (name === 'genesis') docs.push({ name, doc: this.opts.genesis }) // self-certifying: hashes to the community id
       else if (name === 'quests') docs.push({ name, doc: questsView(s, stamp) })
       else if (name === 'libraries') docs.push({ name, doc: librariesView(s, stamp) })
+      else if (name.startsWith('inbox/')) docs.push({ name, doc: inboxView(name.slice(6), (this.data.inbox?.[name.slice(6)] ?? []) as InboxItem[], stamp) })
       else if (name.startsWith('library/')) { const doc = libraryView(s, name.slice(8), stamp); if (doc) docs.push({ name, doc }) }
       else if (name === 'review') docs.push({ name, doc: reviewView(s, stamp) })
       else if (name === 'leaderboards') docs.push({ name, doc: leaderboardsView(s, stamp) })

@@ -21,6 +21,9 @@ export interface StoreData {
   viewFormat?: number
   /** Recent outcomes per journal author, newest last (published in member views). */
   receipts?: Record<string, Receipt[]>
+  /** Notifications per member, newest last (published as inbox/<owner>). */
+  inbox?: Record<string, { id: number; at: number; kind: string; actor: string | null; subject: string | null; target: unknown }[]>
+  inboxSeq?: number
 }
 
 /** What became of one journal entry: the app's "pending" resolves against these. */

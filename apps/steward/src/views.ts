@@ -99,6 +99,8 @@ export function memberView(s: State, owner: string, stamp: ViewStamp, journal?: 
   return {
     v: 0, kind: 'member', ...stamp, owner, member: true, profile: m.profile, roles: m.roles, effectiveRoles: effectiveRoles(s, owner), badges: m.badges, joinedAt: m.joinedAt,
     scores: m.scores ?? {},
+    follows: m.follows ?? [],
+    followers: Object.values(s.members).filter((x) => x.follows?.includes(owner)).length,
     posts: posts.map((p) => postCard(s, p)), journal: journal ?? null,
     submissions: Object.values(s.submissions ?? {}).filter((x) => x.author === owner).sort((a, b) => a.at - b.at).map((x) => ({ id: x.id, quest: x.quest, status: x.status, at: x.at })),
   }
@@ -181,6 +183,78 @@ export function leaderboardView(s: State, id: string, stamp: ViewStamp) {
   return { v: 0, kind: 'leaderboard', ...stamp, ...l, badgeName: s.community.badges.find((b) => b.id === l.badge)?.name ?? l.badge, entries: ranking(s, l.badge) }
 }
 
+// ---- notifications ------------------------------------------------------------------
+
+/** davinci's notification kinds that this protocol can produce. */
+export type NoteKind = 'comment_on_post' | 'reply_to_comment' | 'mention_in_post' | 'mention_in_comment' | 'followed_author_posted' | 'new_follower' | 'quest_approved' | 'quest_rejected' | 'quest_disqualified' | 'post_deleted' | 'comment_deleted'
+export type NoteTarget = { type: 'post'; slug: string; commentId: string | null } | { type: 'quest'; id: string } | { type: 'user'; id: string }
+export interface Note { to: string; kind: NoteKind; actor: string | null; subject: string | null; target: NoteTarget | null }
+export interface InboxItem extends Omit<Note, 'to'> { id: number; at: number }
+
+const mentioned = (text: string | undefined) => [...new Set([...(text ?? '').matchAll(/\/users\/(0x[0-9a-f]{40})/gi)].map((m) => m[1].toLowerCase()))]
+
+/** Who to notify about one accepted action, from the state before and after it (pure). */
+export function notificationsFor(prev: State, next: State, action: unknown, ctx: { author: string; id: string }): Note[] {
+  const a = action as { type?: string; body?: Record<string, unknown> }
+  const b = a?.body ?? {}
+  const notes: Note[] = []
+  const add = (to: string | undefined, kind: NoteKind, subject: string | null, target: NoteTarget | null, actor: string | null = ctx.author) => {
+    if (to && to !== ctx.author && next.members[to]) notes.push({ to, kind, actor, subject, target })
+  }
+  const titleOf = (postId: string) => next.posts[postId]?.title ?? next.posts[postId]?.excerpt.slice(0, 60) ?? ''
+  switch (a?.type) {
+    case 'comment.create': {
+      const c = next.comments[ctx.id]
+      if (!c) break
+      const post = next.posts[c.post]
+      const target: NoteTarget = { type: 'post', slug: c.post, commentId: c.id }
+      const parentAuthor = c.parent ? next.comments[c.parent]?.author : undefined
+      if (parentAuthor) add(parentAuthor, 'reply_to_comment', titleOf(c.post), target)
+      if (post && post.author !== parentAuthor) add(post.author, 'comment_on_post', titleOf(c.post), target)
+      for (const m of mentioned(c.text)) if (m !== post?.author && m !== parentAuthor) add(m, 'mention_in_comment', titleOf(c.post), target)
+      break
+    }
+    case 'post.create': {
+      const p = next.posts[ctx.id]
+      if (!p) break
+      const target: NoteTarget = { type: 'post', slug: p.id, commentId: null }
+      const ments = mentioned(`${p.title ?? ''} ${p.excerpt}`)
+      for (const m of ments) add(m, 'mention_in_post', titleOf(p.id), target)
+      for (const f of Object.values(next.members)) if (f.follows?.includes(ctx.author) && !ments.includes(f.owner)) add(f.owner, 'followed_author_posted', titleOf(p.id), target)
+      break
+    }
+    case 'follow.set':
+      if (b.on && !prev.members[ctx.author]?.follows?.includes(String(b.member))) add(String(b.member), 'new_follower', null, { type: 'user', id: ctx.author })
+      break
+    case 'mod.hide': {
+      const t = String(b.target)
+      if (next.posts[t]) add(next.posts[t].author, 'post_deleted', titleOf(t), null)
+      else if (next.comments[t]) add(next.comments[t].author, 'comment_deleted', titleOf(next.comments[t].post), { type: 'post', slug: next.comments[t].post, commentId: null })
+      break
+    }
+    case 'quest.submit': {
+      const sub = next.submissions?.[ctx.id]
+      if (sub && (sub.status === 'approved' || sub.status === 'rejected')) {
+        const kind = sub.status === 'approved' ? 'quest_approved' : 'quest_rejected'
+        notes.push({ to: sub.author, kind, actor: null, subject: next.quests?.[sub.quest]?.title ?? '', target: { type: 'quest', id: sub.quest } })
+      }
+      break
+    }
+    case 'quest.review': {
+      const sub = next.submissions?.[String(b.submission)]
+      if (!sub) break
+      const kind = sub.status === 'approved' ? 'quest_approved' : sub.status === 'rejected' ? 'quest_rejected' : 'quest_disqualified'
+      add(sub.author, kind, next.quests?.[sub.quest]?.title ?? '', { type: 'quest', id: sub.quest }, null)
+      break
+    }
+  }
+  return notes
+}
+
+export function inboxView(owner: string, items: InboxItem[], stamp: ViewStamp) {
+  return { v: 0, kind: 'inbox', ...stamp, owner, items: [...items].reverse() }
+}
+
 /** The library views a post's change touches (a comment's post, too). */
 function libraryOf(s: State | undefined, target: string | undefined): string[] {
   if (!s || !target) return []
@@ -199,6 +273,7 @@ export function dirtyFor(type: string, author: string, body: Record<string, unkn
     case 'comment.create': return ['home', `post/${post}`, ...libraryOf(s, post)]
     case 'like.set': case 'mod.hide': return ['community', 'home', `post/${post}`, ...libraryOf(s, post)]
     case 'library.create': return ['community', 'libraries', `library/${id}`]
+    case 'follow.set': return [`member/${author}`, `member/${body.member}`]
     case 'library.update': return ['community', 'libraries', `library/${body.library}`, 'home']
     case 'role.grant': case 'role.revoke': return ['members', `member/${body.member}`]
     case 'badge.grant': case 'badge.revoke': case 'badge.score': return ['members', `member/${body.member}`, 'leaderboards']

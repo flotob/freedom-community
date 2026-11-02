@@ -144,6 +144,8 @@ export const ACTION_BODIES = {
   /** A library: a curated shelf of posts with its own page (davinci's libraries; public ones for now). */
   'library.create': z.object({ name: shortText(120), description: shortText(2000).optional(), cover: ref.optional(), postToFeed: z.boolean().optional() }),
   'library.update': z.object({ library: actionIdSchema, name: shortText(120).optional(), description: shortText(2000).optional(), cover: ref.optional(), postToFeed: z.boolean().optional(), archived: z.boolean().optional() }),
+  /** Follow or unfollow a member (any member may; their posts reach your notifications). */
+  'follow.set': z.object({ member: address, on: z.boolean() }),
   /** Set a member's score in a badge they hold. */
   'badge.score': z.object({ member: address, badge: slug, score: z.number().int().min(-1_000_000_000).max(1_000_000_000) }),
   'quest.create': z.object(QuestFields),
