@@ -25,8 +25,13 @@ if (cmd === 'run') {
     swarm, genesis, dataDir: env.DATA_DIR ?? './steward-data', sealKey: sealKeyFrom(key),
     pollMs: Number(env.POLL_MS ?? 30_000), canaryMs: Number(env.CANARY_MS ?? 300_000), statusMs: Number(env.STATUS_MS ?? 300_000), instance: env.STEWARD_INSTANCE, takeoverMs: env.TAKEOVER_MS ? Number(env.TAKEOVER_MS) : undefined,
   })
-  process.on('SIGTERM', () => { steward.stop(); process.exit(0) })
-  process.on('SIGINT', () => { steward.stop(); process.exit(0) })
+  // Release the lease on the way out, so a standby (or the next deploy) takes over at once.
+  const shutdown = () => {
+    steward.stop()
+    Promise.race([steward.release(), new Promise((r) => setTimeout(r, 8000))]).finally(() => process.exit(0))
+  }
+  process.on('SIGTERM', shutdown)
+  process.on('SIGINT', shutdown)
   if (env.STATUS_PORT) {
     createServer((_req, res) => {
       res.setHeader('content-type', 'application/json')

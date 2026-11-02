@@ -101,9 +101,9 @@ export class Steward {
    * minutes. Returns the other instance that holds it, if its status is fresh.
    */
   private async leaseHolder(): Promise<{ instance: string; ageMs: number; everyMs: number } | null> {
-    const doc = await this.swarm.readFeedJson<{ at?: number; writer?: { instance?: string; statusEveryMs?: number } }>(this.swarm.owner, viewTopic(this.community, 'status'))
+    const doc = await this.swarm.readFeedJson<{ at?: number; writer?: { instance?: string; statusEveryMs?: number; released?: boolean } }>(this.swarm.owner, viewTopic(this.community, 'status'))
     const instance = doc?.writer?.instance
-    if (!doc?.at || !instance || instance === this.instance) return null
+    if (!doc?.at || !instance || instance === this.instance || doc.writer?.released) return null
     const everyMs = doc.writer?.statusEveryMs ?? 300_000
     const ageMs = Date.now() - doc.at
     return ageMs < (this.opts.takeoverMs ?? 3 * everyMs) ? { instance, ageMs, everyMs } : null
@@ -112,8 +112,8 @@ export class Steward {
   async start(): Promise<void> {
     // Another steward with this key is active: wait as a standby until its lease lapses.
     for (let holder = await this.leaseHolder(); holder; holder = await this.leaseHolder()) {
-      this.log(`standby: instance ${holder.instance} is active (status ${Math.round(holder.ageMs / 1000)} s old); checking again in 60 s`)
-      await new Promise((r) => setTimeout(r, 60_000))
+      this.log(`standby: instance ${holder.instance} is active (status ${Math.round(holder.ageMs / 1000)} s old); checking again in 15 s`)
+      await new Promise((r) => setTimeout(r, 15_000))
     }
     // The ledger may have moved on without us (another instance, or a crash before saving).
     if (!this.fresh && (await this.swarm.readFeedPayload(this.swarm.owner, this.ledgerTopic, this.data.ledgerPage))) {
@@ -237,11 +237,20 @@ export class Steward {
    * The `status` view: the steward's own health and its node's, for the dashboard page.
    * Nothing in it is secret: balances and batches are public on chain.
    */
-  private async publishStatus(): Promise<void> {
+  /** On shutdown: publish a final status that releases the lease, so a standby takes over at once. */
+  async release(): Promise<void> {
+    if (!this.active) return
+    this.released = true
+    await this.publishStatus(true)
+    this.active = false
+  }
+  private released = false
+
+  private async publishStatus(final = false): Promise<void> {
     if (!this.active) return
     // Someone else published a status after ours: they hold the lease now; step down.
     const holder = await this.leaseHolder().catch(() => null)
-    if (holder && holder.ageMs < (this.opts.statusMs ?? 300_000)) {
+    if (!final && holder && holder.ageMs < (this.opts.statusMs ?? 300_000)) {
       this.log(`instance ${holder.instance} published a newer status: stepping down to standby`)
       this.active = false
       this.stop()
@@ -266,7 +275,7 @@ export class Steward {
     const doc = {
       v: 0, kind: 'status', ...this.stamp(), at: Date.now(),
       steward: { ...this.status(), startedAt: this.startedAt, uptimeS: Math.round((Date.now() - this.startedAt) / 1000) },
-      writer: { instance: this.instance, statusEveryMs: this.opts.statusMs ?? 300_000 },
+      writer: { instance: this.instance, statusEveryMs: this.opts.statusMs ?? 300_000, ...(this.released ? { released: true } : {}) },
       node: {
         version: health?.version ?? null,
         connected: topology?.connected ?? null, population: topology?.population ?? null, depth: topology?.depth ?? null,
