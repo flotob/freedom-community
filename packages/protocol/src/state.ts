@@ -37,6 +37,18 @@ export interface Quest {
   image?: string
 }
 
+export interface Library {
+  id: string
+  author: string
+  createdAt: number
+  name: string
+  description?: string
+  cover?: string
+  /** Its posts also show in the home feed. */
+  postToFeed?: boolean
+  archived?: boolean
+}
+
 export type SubmissionStatus = 'pending' | 'approved' | 'rejected' | 'disqualified'
 
 export interface Submission {
@@ -64,6 +76,8 @@ export interface Post {
   content: string
   contentHash: string
   image?: string
+  /** The library this post sits in; absent for a home-feed post. */
+  library?: string
   categories: string[]
   status: ItemStatus
   hiddenReason?: string
@@ -106,6 +120,7 @@ export interface State {
   comments: Record<string, Comment>
   /** Absent until the first quest (keeps the state hashes of older ledgers). */
   quests?: Record<string, Quest>
+  libraries?: Record<string, Library>
   submissions?: Record<string, Submission>
   /** Actions folded so far, accepted or not. */
   seq: number

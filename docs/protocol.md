@@ -71,6 +71,7 @@ A journal entry is one action:
 | `role.grant` / `role.revoke` | `role.manage` | `{ member, role }` |
 | `badge.grant` / `badge.revoke` | `badge.manage` | `{ member, badge }` |
 | `community.update` | `community.manage` | `{ name?, theme?, categories?, badges?, roles?, leaderboards? }` |
+| `library.create` / `library.update` | `library.manage` | `{ name, description?, cover?, postToFeed? }` / `{ library, …, archived? }`; posting into one needs `library.post` (`post.create` with `library`) |
 | `badge.score` | `badge.score` | `{ member, badge, score }` (the member must hold the badge) |
 | `quest.create` | `quest.manage` | `{ title, description?, kind: text\|mcq\|upload, options?, multi?, partial?, secret?, autoApprove?, opensAt?, closesAt?, tries?, rewards?, prerequisites?, privacy?, image? }` |
 | `quest.update` | `quest.manage` | `{ quest, …any quest field, close? }` (kind is fixed once there are submissions) |
@@ -150,6 +151,7 @@ The app reads pre-computed JSON documents. Each is a steward sequence feed (topi
 | `member/<owner>` | profile, roles, badges, posts, and a journal receipt: `{next, recent: [{index, type, ok, reason?, at}]}` (how far the steward has read this author's journal, and their last 20 outcomes). It is also published for someone whose join was refused (`member: false`), so their app can say why. |
 | `leaderboards` | every leaderboard with its top 5 |
 | `leaderboard/<id>` | the full ranking: `{rank, owner, name, avatar, score}` |
+| `libraries` / `library/<id>` | the libraries with post counts / one library and its posts (a library's posts reach `home` only with `postToFeed`) |
 | `quests` | every quest's public part (never `secret`; `hasSolutions` instead), with counts |
 | `quest/<id>` | the quest and its feed; answers only when both quest and submission are public and the answer isn't sealed; a `secret` quest shows no rows |
 | `review` | pending submissions with their (unsealed) answers, for reviewers |

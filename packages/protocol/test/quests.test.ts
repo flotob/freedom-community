@@ -168,3 +168,20 @@ test('replies nest under a comment on the same post, down to depth 4', () => {
   assert.equal(j.state.comments[parent].parent !== undefined, true)
   assert.equal(j.act(BOB, 'comment.create', { post, parent, text: 'depth 5' }).reason, 'too-deep')
 })
+
+test('libraries: managers create them, permitted members post into them', () => {
+  const j = new Journal()
+  j.act(ALICE, 'member.join')
+  const roles = genesis.roles.map((r) => (r.id === 'member' ? { ...r, permissions: [...r.permissions, 'post.create'] } : r))
+  j.act(OWNER, 'community.update', { roles })
+  assert.equal(j.act(ALICE, 'library.create', { name: 'Field guides' }).reason, 'not-permitted')
+  const lib = j.act(OWNER, 'library.create', { name: 'Field guides', description: 'Owls by call.', cover: REF }).id
+  assert.equal(j.state.libraries![lib].name, 'Field guides')
+  const body = { excerpt: 'x', content: REF, contentHash: 'e'.repeat(64), categories: [], library: lib }
+  assert.equal(j.act(ALICE, 'post.create', body).reason, 'not-permitted')
+  const ok = j.act(OWNER, 'post.create', body)
+  assert.equal(ok.ok, true)
+  assert.equal(j.state.posts[ok.id].library, lib)
+  j.act(OWNER, 'library.update', { library: lib, archived: true })
+  assert.equal(j.act(OWNER, 'post.create', body).reason, 'unknown-target')
+})

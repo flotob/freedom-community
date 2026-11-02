@@ -2,7 +2,7 @@
 // The steward, the app (optimistic updates) and auditors all run this same function.
 import { actionId, normalizeAddress } from './canonical.ts'
 import { parseAction, type Action } from './schemas.ts'
-import { addSorted, can, isOwnerRole, removeValue, type Comment, type Post, type Quest, type State, type Submission } from './state.ts'
+import { addSorted, can, isOwnerRole, removeValue, type Comment, type Library, type Post, type Quest, type State, type Submission } from './state.ts'
 
 export interface ReduceContext {
   /** The journal owner who signed the entry. */
@@ -72,7 +72,13 @@ function apply(s: State, a: Action, ctx: Ctx, effects: Effect[]): string | null 
       if (denied) return denied
       const bad = a.body.categories.find((c) => !s.community.categories.some((k) => k.id === c))
       if (bad) return 'unknown-category'
+      if (a.body.library !== undefined) {
+        const lib = s.libraries?.[a.body.library]
+        if (!lib || lib.archived) return 'unknown-target'
+        if (!can(s, ctx.author, 'library.post')) return 'not-permitted'
+      }
       const post: Post = { id: ctx.id, author: ctx.author, createdAt: ctx.at, title: a.body.title, excerpt: a.body.excerpt, content: a.body.content, contentHash: a.body.contentHash, image: a.body.image, categories: a.body.categories, status: 'published', likes: [], comments: [] }
+      if (a.body.library !== undefined) post.library = a.body.library
       s.posts[ctx.id] = post
       effects.push({ kind: 'adopt', ref: a.body.content })
       if (a.body.image) effects.push({ kind: 'adopt', ref: a.body.image })
@@ -174,6 +180,27 @@ function apply(s: State, a: Action, ctx: Ctx, effects: Effect[]): string | null 
         if (badge.enabled === false) return 'badge-disabled'
         member.badges = addSorted(member.badges, badge.id)
       } else detachBadge(member, badge.id)
+      return null
+    }
+    case 'library.create': {
+      const denied = need('library.manage')
+      if (denied) return denied
+      const lib: Library = { id: ctx.id, author: ctx.author, createdAt: ctx.at, name: a.body.name }
+      if (a.body.description !== undefined) lib.description = a.body.description
+      if (a.body.cover !== undefined) { lib.cover = a.body.cover; effects.push({ kind: 'adopt', ref: a.body.cover }) }
+      if (a.body.postToFeed) lib.postToFeed = true
+      s.libraries = { ...s.libraries, [ctx.id]: lib }
+      return null
+    }
+    case 'library.update': {
+      const denied = need('library.manage')
+      if (denied) return denied
+      const lib = s.libraries?.[a.body.library]
+      if (!lib) return 'unknown-target'
+      for (const k of ['name', 'description', 'cover', 'postToFeed', 'archived'] as const) {
+        if (a.body[k] !== undefined) (lib as unknown as Record<string, unknown>)[k] = a.body[k]
+      }
+      if (a.body.cover) effects.push({ kind: 'adopt', ref: a.body.cover })
       return null
     }
     case 'badge.score': {

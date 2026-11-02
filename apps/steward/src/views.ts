@@ -11,6 +11,8 @@ export function viewTopic(community: string, name: string): string {
 }
 
 const visible = (p: Post) => p.status === 'published'
+/** Home feed: home posts, plus posts from libraries that opt into the feed. */
+const onHome = (s: State, p: Post) => visible(p) && (!p.library || !!s.libraries?.[p.library]?.postToFeed)
 
 function postCard(s: State, p: Post) {
   const author = s.members[p.author]
@@ -37,13 +39,13 @@ export function communityView(s: State, stamp: ViewStamp) {
     id: c.id, name: c.name, origin: c.origin, steward: c.steward, theme: c.theme ?? null, public: c.public,
     categories: c.categories, badges: c.badges, roles: c.roles.map((r) => ({ id: r.id, name: r.name, permissions: r.permissions })),
     leaderboards: c.leaderboards ?? [],
-    counts: { members: Object.keys(s.members).length, posts: Object.values(s.posts).filter(visible).length },
-    homePages: Math.max(1, Math.ceil(Object.values(s.posts).filter(visible).length / PAGE_SIZE)),
+    counts: { members: Object.keys(s.members).length, posts: Object.values(s.posts).filter(visible).length, libraries: Object.values(s.libraries ?? {}).filter((l) => !l.archived).length },
+    homePages: Math.max(1, Math.ceil(Object.values(s.posts).filter((p) => onHome(s, p)).length / PAGE_SIZE)),
   }
 }
 
 export function homeViews(s: State, stamp: ViewStamp) {
-  const posts = Object.values(s.posts).filter(visible).sort((a, b) => b.createdAt - a.createdAt || (a.id < b.id ? 1 : -1))
+  const posts = Object.values(s.posts).filter((p) => onHome(s, p)).sort((a, b) => b.createdAt - a.createdAt || (a.id < b.id ? 1 : -1))
   const pages = Math.max(1, Math.ceil(posts.length / PAGE_SIZE))
   return Array.from({ length: pages }, (_, i) => ({
     name: `home/${i}`,
@@ -65,6 +67,7 @@ export function postView(s: State, id: string, stamp: ViewStamp, bodies: Bodies 
   }))
   return {
     v: 0, kind: 'post', ...stamp, ...postCard(s, p), status: p.status, hiddenReason: p.hiddenReason ?? null,
+    library: p.library ? { id: p.library, name: s.libraries?.[p.library]?.name ?? '' } : null,
     content: p.status === 'published' ? p.content : null, contentHash: p.contentHash,
     // The post's markdown, embedded so the app needs no second read (null if unavailable).
     body: p.status === 'published' ? bodies(p.content) : null,
@@ -99,6 +102,23 @@ export function memberView(s: State, owner: string, stamp: ViewStamp, journal?: 
     posts: posts.map((p) => postCard(s, p)), journal: journal ?? null,
     submissions: Object.values(s.submissions ?? {}).filter((x) => x.author === owner).sort((a, b) => a.at - b.at).map((x) => ({ id: x.id, quest: x.quest, status: x.status, at: x.at })),
   }
+}
+
+// ---- libraries -------------------------------------------------------------------
+
+export function librariesView(s: State, stamp: ViewStamp) {
+  const libs = Object.values(s.libraries ?? {}).filter((l) => !l.archived).sort((a, b) => a.createdAt - b.createdAt)
+  return {
+    v: 0, kind: 'libraries', ...stamp,
+    libraries: libs.map((l) => ({ ...l, postCount: Object.values(s.posts).filter((p) => p.library === l.id && visible(p)).length })),
+  }
+}
+
+export function libraryView(s: State, id: string, stamp: ViewStamp) {
+  const l = s.libraries?.[id]
+  if (!l) return null
+  const posts = Object.values(s.posts).filter((p) => p.library === id && visible(p)).sort((a, b) => b.createdAt - a.createdAt)
+  return { v: 0, kind: 'library', ...stamp, library: l, posts: posts.map((p) => postCard(s, p)) }
 }
 
 // ---- quests ----------------------------------------------------------------------
@@ -161,16 +181,25 @@ export function leaderboardView(s: State, id: string, stamp: ViewStamp) {
   return { v: 0, kind: 'leaderboard', ...stamp, ...l, badgeName: s.community.badges.find((b) => b.id === l.badge)?.name ?? l.badge, entries: ranking(s, l.badge) }
 }
 
+/** The library views a post's change touches (a comment's post, too). */
+function libraryOf(s: State | undefined, target: string | undefined): string[] {
+  if (!s || !target) return []
+  const lib = (s.posts[target] ?? s.posts[s.comments[target]?.post ?? ''])?.library
+  return lib ? ['libraries', `library/${lib}`] : []
+}
+
 /** Which views an accepted action touches (by its type and target). */
 export function dirtyFor(type: string, author: string, body: Record<string, unknown>, id: string, s?: State): string[] {
   const post = (body.post ?? body.target) as string | undefined
   switch (type) {
     case 'member.join': return ['community', 'members', `member/${author}`]
     case 'profile.set': return ['members', `member/${author}`, 'home']
-    case 'post.create': return ['community', 'home', `post/${id}`, `member/${author}`]
-    case 'post.edit': case 'post.withdraw': return ['community', 'home', `post/${post}`, `member/${author}`]
-    case 'comment.create': return ['home', `post/${post}`]
-    case 'like.set': case 'mod.hide': return ['community', 'home', `post/${post}`]
+    case 'post.create': return ['community', 'home', `post/${id}`, `member/${author}`, ...(body.library ? ['libraries', `library/${body.library}`] : [])]
+    case 'post.edit': case 'post.withdraw': return ['community', 'home', `post/${post}`, `member/${author}`, ...libraryOf(s, post)]
+    case 'comment.create': return ['home', `post/${post}`, ...libraryOf(s, post)]
+    case 'like.set': case 'mod.hide': return ['community', 'home', `post/${post}`, ...libraryOf(s, post)]
+    case 'library.create': return ['community', 'libraries', `library/${id}`]
+    case 'library.update': return ['community', 'libraries', `library/${body.library}`, 'home']
     case 'role.grant': case 'role.revoke': return ['members', `member/${body.member}`]
     case 'badge.grant': case 'badge.revoke': case 'badge.score': return ['members', `member/${body.member}`, 'leaderboards']
     case 'community.update': return ['community', 'members', 'home', 'leaderboards', ...(s?.quests ? ['quests'] : [])]
