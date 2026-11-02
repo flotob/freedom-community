@@ -37,6 +37,20 @@ The pipeline, step by step:
 4. **Views.** Changed views are republished as raw JSON blobs behind feeds, so Freedom pages can read them with `swarm_readData`. Post views embed the hash-checked markdown body. Feed indices are tracked locally, and a new view format republishes every view.
 5. **Adopt.** Accepted content is re-stamped with `PUT /stewardship`, including images a post body references as `bzz://<ref>`. Every journal chunk the ledger references is re-uploaded with the community batch, so an audit still works after members' batches expire.
 
+Environment for `run`:
+
+| Variable | Meaning |
+|---|---|
+| `BEE_URL` | the node's API (`http://davinci-ant:1633` on the server's Docker network) |
+| `BATCH` | the community's postage batch (ledger, views, adopted content) |
+| `STEWARD_KEY` / `STEWARD_KEY_FILE` | the steward key; the seal key for quest answers is derived from it |
+| `GENESIS_JSON` / `GENESIS` | the genesis document (or a path to it) |
+| `DATA_DIR` | the local cache (default `./steward-data`) |
+| `POLL_MS` | journal polling interval (default 30 s) |
+| `CANARY_MS` | doorbell self-test interval (default 5 min) |
+| `STATUS_MS` | how often the `status` view is published (default 5 min; 0 turns it off) |
+| `STATUS_PORT` | optional: serve a JSON status over HTTP inside the container |
+
 The local state file is only a cache. When `DATA_DIR` is empty, the steward replays its own
 ledger from Swarm exactly as an auditor would. It starts only if that replay agrees with every
 recorded outcome and state hash, then rebuilds all views. With `STATUS_PORT` set it answers any
