@@ -1,0 +1,145 @@
+{
+  "at": "2026-11-03T14:47:05.676Z",
+  "memberBatchExpiresApprox": "2026-11-03T08:13:08.105Z",
+  "peers": 100,
+  "results": [
+    {
+      "label": "adopted",
+      "ref": "90b306d3a9ccd1ddf31f789f3c382213a7b5a1c9277c7eae22f92f4737a67c71",
+      "root": "ok",
+      "bytes": 102400,
+      "redundancyByte": 129,
+      "children": 30,
+      "childrenOk": 30,
+      "missing": [],
+      "downloads": [
+        {
+          "status": 200,
+          "bytes": 102400,
+          "ms": 212
+        },
+        {
+          "status": 200,
+          "bytes": 102400,
+          "ms": 211
+        },
+        {
+          "status": 200,
+          "bytes": 102400,
+          "ms": 211
+        }
+      ]
+    },
+    {
+      "label": "control",
+      "ref": "933344cadac4d5b76d2c9442c151769c78c895daae5be283367e9a5caa4703e3",
+      "root": "ok",
+      "bytes": 102400,
+      "redundancyByte": 129,
+      "children": 30,
+      "childrenOk": 22,
+      "missing": [
+        {
+          "addr": "4322494e2ac8ecb8647ca95b12a4bbe43d5d279a2949ad06e6ad8228626381f2",
+          "status": 404
+        },
+        {
+          "addr": "baa6202fe933f095ffea8033ec295c9d4747f8d92ba936b3908aa25051268dad",
+          "status": 404
+        },
+        {
+          "addr": "860de13c8e2db312235c974ed5914c6d1fc6ca1e0b2716ac3f036e157cd99f79",
+          "status": 404
+        },
+        {
+          "addr": "1398fbe0fd45ec06b8ad289d1b7fe52fe37063c9cddc83bf719c1debc1680d9f",
+          "status": 404
+        },
+        {
+          "addr": "bdce1d737e7f7ab3cc0666ebc02b7d4205323f2e2491e098efff2e6fc88eb85d",
+          "status": 404
+        },
+        {
+          "addr": "7e7e027025cb94a25b4f54d80c93b023ecc67ccb89aac49dd2c9062111e14572",
+          "status": 404
+        },
+        {
+          "addr": "fb746231018c6c6d21fb89ab8793f488b969c51c466b404f91399a39aa6a3fab",
+          "status": 404
+        },
+        {
+          "addr": "d6300c8b8bc7e90c460f403c2f2e33f1ee9c602a56c48f695be97ae63fe70f9a",
+          "status": 404
+        }
+      ],
+      "downloads": [
+        {
+          "status": "terminated",
+          "ms": 3684
+        },
+        {
+          "status": "terminated",
+          "ms": 3473
+        },
+        {
+          "status": "terminated",
+          "ms": 3432
+        }
+      ]
+    },
+    {
+      "label": "adopted (S7)",
+      "ref": "4ed15972cc4fe60d3699d0480f25870f428544f94ccd5a168b31e732ed0ab2fa",
+      "root": "ok",
+      "bytes": 10240,
+      "redundancyByte": 129,
+      "children": 6,
+      "childrenOk": 6,
+      "missing": [],
+      "downloads": [
+        {
+          "status": 200,
+          "bytes": 10240,
+          "ms": 215
+        },
+        {
+          "status": 200,
+          "bytes": 10240,
+          "ms": 215
+        },
+        {
+          "status": 200,
+          "bytes": 10240,
+          "ms": 218
+        }
+      ]
+    },
+    {
+      "label": "control (smoke test)",
+      "ref": "ef133689e6aeea442883c135e76e6b6f0792af51c0bc6189de9bbe8736599d35",
+      "root": "ok",
+      "bytes": 58,
+      "redundancyByte": 0,
+      "children": 0,
+      "childrenOk": 0,
+      "missing": [],
+      "downloads": [
+        {
+          "status": 200,
+          "bytes": 58,
+          "ms": 119
+        },
+        {
+          "status": 200,
+          "bytes": 58,
+          "ms": 118
+        },
+        {
+          "status": 200,
+          "bytes": 58,
+          "ms": 117
+        }
+      ]
+    }
+  ]
+}
