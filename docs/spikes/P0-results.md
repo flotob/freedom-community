@@ -10,7 +10,7 @@ Each spike answers one question with numbers.
 |---|---|---|
 | S1 | Can a page in Freedom write a journal that a server process reads through a different node? | **Yes.** Writes take 1.9–2.7 s. Readable on the steward's node 0.7–1.7 s later; visible as "latest" after 1.7–2.9 s. |
 | S2 | Does a GSOC "doorbell" from Freedom reach the steward? | **Yes, 5 of 5.** Delivered about 0.6 s after the send returned (sends take 0.5–1.2 s; the first took 2.9 s). |
-| S3 | Does content re-stamped by the steward outlive the member's batch? | **Pending:** the member batch expires around 2026-11-03 08:13 UTC. Baseline taken. |
+| S3 | Does content re-stamped by the steward outlive the member's batch? | **Yes.** Minutes after the member batch expired, both adopted blobs were whole (every chunk served), while the unadopted control had lost 7 of its 30 child chunks and no longer downloaded. |
 | S5 | Can a page seal a quest answer that only the steward can open? | **Yes.** WebCrypto X25519 + HKDF + AES-GCM in the page, `node:crypto` on the steward. Tampering is detected. |
 | S6 | Can members post on stamps the steward sponsors? | **Not through `window.swarm` today.** antd accepts envelope uploads, but no Freedom method passes one. Asked for. |
 | S7 | Does the released antd serve every endpoint the steward needs? | **Yes**, 15 of 15 after the GSOC follow-up. See [S7-ant-api.md](S7-ant-api.md). |
@@ -80,8 +80,21 @@ Until then, each member buys a Starter plan once, for **0.52 xDAI** through Free
 
 [`spikes/s3-adoption`](../../spikes/s3-adoption)
 
-- **Setup:** two 100 KiB blobs on a short-lived "member" batch.
-- **Adopted blob:** re-stamped on the community batch with `PUT /stewardship` (5.3 s).
+- **Setup** (2026-11-01 20:58): two 100 KiB blobs on a short-lived "member" batch (depth 18).
+- **Adopted blob:** re-stamped on the community batch with `PUT /stewardship` (5.3 s, same reference).
 - **Control blob:** left alone.
 - **Baseline:** all retrievable from a fresh, cache-less antd.
-- **Next:** re-run `check.mjs` after the member batch expires.
+- **Expiry:** the member batch expired at 08:40 UTC on 2026-11-03, when the chain's cumulative price passed its balance. That was 27 min later than the TTL predicted at setup, because TTL estimates move with the storage price.
+- **Re-check** (`check.mjs` 08:40, `chunks.mjs` 08:41 and 08:42, each from a fresh, cache-less antd):
+
+  | Blob | Batch now | Child chunks served | Download |
+  |---|---|---|---|
+  | adopted (100 KiB) | community | 30 of 30 | 200, byte-identical, 0.3 s |
+  | adopted in S7 (10 KiB) | community | 6 of 6 | 200, 0.2 s |
+  | control (100 KiB) | expired | 21 of 30, then 23 of 30 | fails: the stream breaks after 3–7 s |
+  | smoke test (58 B, one chunk) | expired | (single chunk, served) | 200 |
+
+- **Reading the control:** antd uploads carry erasure coding (the span's top byte is `0x81`; 100 KiB is 25 data plus 5 parity chunks), so a blob survives up to 5 missing children. The control's missing set was the same in both chunk probes (7 chunks, all `404`; two further 404s in the first probe were served again a minute later), which puts it beyond repair. We can't tell whether some of those chunks had already gone before expiry (the baseline download would have masked up to 5), but the adopted copy of the same kind of content had none missing.
+- **The smoke-test chunk** (on the same expired batch, but fetched through the public gateway when it was uploaded) still answered: probably a forwarding cache or a neighbourhood that hadn't evicted yet. One cached chunk proves nothing about keeping content.
+- **Answer:** re-stamping is what keeps content. Without it, a member's content starts to vanish as soon as their batch expires. The steward's adoption step (re-stamp accepted content on the community batch) is therefore required, not an optimisation.
+- **Follow-up:** `chunks.mjs` again some hours later, to see the control fade further.

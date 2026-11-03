@@ -1,0 +1,38 @@
+{
+  "at": "2026-11-03T08:40:38.880Z",
+  "memberBatchExpiresApprox": "2026-11-03T08:13:08.105Z",
+  "results": [
+    {
+      "label": "adopted",
+      "ref": "90b306d3a9ccd1ddf31f789f3c382213a7b5a1c9277c7eae22f92f4737a67c71",
+      "status": 200,
+      "retrievable": true,
+      "contentMatches": true,
+      "ms": 433
+    },
+    {
+      "label": "control",
+      "ref": "933344cadac4d5b76d2c9442c151769c78c895daae5be283367e9a5caa4703e3",
+      "status": "terminated",
+      "retrievable": false,
+      "contentMatches": false,
+      "ms": 4370
+    },
+    {
+      "label": "adopted (S7)",
+      "ref": "4ed15972cc4fe60d3699d0480f25870f428544f94ccd5a168b31e732ed0ab2fa",
+      "status": 200,
+      "retrievable": true,
+      "contentMatches": null,
+      "ms": 255
+    },
+    {
+      "label": "control (smoke test)",
+      "ref": "ef133689e6aeea442883c135e76e6b6f0792af51c0bc6189de9bbe8736599d35",
+      "status": 200,
+      "retrievable": true,
+      "contentMatches": null,
+      "ms": 12
+    }
+  ]
+}
