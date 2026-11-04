@@ -31,7 +31,7 @@ BEE_URL=… BATCH=<member batch> GENESIS=genesis.json KEYS=members.json OWNER_KE
 
 The pipeline, step by step:
 
-1. **Ingest.** The GSOC doorbell gives low latency. Every known member's journal is also polled slowly, and the steward rings its own doorbell as a canary; if the canary doesn't come back, it re-subscribes. A stranger's first entry must be a `member.join`; anything else is ignored.
+1. **Ingest.** The GSOC doorbell gives low latency. Every known member's journal is also polled slowly, and the steward rings its own doorbell as a canary; if the canary doesn't come back, it re-subscribes. If the node drops the subscription (a restart), the steward re-opens it within 5 s (backing off to 60 s) without waiting for the canary. A stranger's first entry must be a `member.join`; anything else is ignored.
 2. **Reduce.** Each entry, accepted or rejected, becomes a ledger entry with its outcome and the new state hash.
 3. **Ledger.** Pages of at most 4 KiB go out as a sequence feed.
 4. **Views.** Changed views are republished as raw JSON blobs behind feeds, so Freedom pages can read them with `swarm_readData`. Post views embed the hash-checked markdown body. Feed indices are tracked locally, and a new view format republishes every view.
