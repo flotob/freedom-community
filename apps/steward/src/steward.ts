@@ -13,6 +13,7 @@ import { audit } from './audit.ts'
 import { answerAad, judge, openSealed, sealedAesKey, secretAad, type SealKey } from './seal.ts'
 import { inboxView, leaderboardView, leaderboardsView, libraryView, librariesView, notificationsFor, questView, questsView, reviewView, type InboxItem } from './views.ts'
 import type { Verdict } from '@freedom-community/protocol'
+import { keepOpen } from './reopen.ts'
 
 export interface StewardOptions {
   swarm: Swarm
@@ -323,7 +324,8 @@ export class Steward {
 
   private subscribe(): void {
     this.sub?.cancel()
-    this.sub = this.swarm.subscribeDoorbell(this.doorbell, (text) => this.onDoorbell(text), (e) => this.log('doorbell error', String((e as Error)?.message ?? e)))
+    // keepOpen re-opens the socket by itself if antd drops it (e.g. a keeper restart)
+    this.sub = keepOpen((onMessage, onError) => this.swarm.subscribeDoorbell(this.doorbell, onMessage, onError), (text) => this.onDoorbell(text), this.log)
     this.log('doorbell subscribed', this.doorbell)
     // antd's lurker tails live: a ring sent before it is resident is lost, so give it time.
     this.canary = null
