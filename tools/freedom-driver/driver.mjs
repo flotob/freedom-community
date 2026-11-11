@@ -120,8 +120,10 @@ export async function antGet(win, endpoint) {
   return typeof r === 'string' ? JSON.parse(r) : r
 }
 
+// Vault state comes from identity.getStatus(), the call Freedom's own chrome uses.
+// Freedom removes identity.hasVault() and isUnlocked() (solardev-xyz/freedom-browser#1169).
 export async function hasVault(win) {
-  return (await win.evaluate(() => window.identity.hasVault()))?.hasVault === true
+  return (await win.evaluate(() => window.identity.getStatus()))?.hasVault === true
 }
 
 // Create a new vault through the onboarding wizard UI (password path).
@@ -168,7 +170,7 @@ export async function onboardWithPassword(win, password) {
 
 // The vault auto-locks (15 min by default); unlock it with the profile password if needed.
 export async function ensureUnlocked(win, password) {
-  const unlocked = (await win.evaluate(() => window.identity.isUnlocked()))?.isUnlocked === true
+  const unlocked = (await win.evaluate(() => window.identity.getStatus()))?.isUnlocked === true
   if (unlocked) return false
   const r = await win.evaluate((p) => window.identity.unlock(p), password)
   if (r && r.success === false) throw new Error(`unlock failed: ${r.error || JSON.stringify(r)}`)
